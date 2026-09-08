@@ -8,10 +8,13 @@ services:
     name: distil
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start:render
+    # corepack enable fails on Render (read-only /usr/local/bin). Use npx instead.
+    buildCommand: npx --yes pnpm@10.26.2 install --frozen-lockfile && npx --yes pnpm@10.26.2 build
+    startCommand: npx --yes pnpm@10.26.2 run start:render
     healthCheckPath: /api/health
     envVars:
+      - key: NODE_VERSION
+        value: "22.11.0"
       - key: NODE_ENV
         value: production
       - key: PORT
