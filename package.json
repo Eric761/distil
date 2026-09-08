@@ -11,6 +11,7 @@
     "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
     "build": "pnpm -r typecheck && pnpm --filter @invoice/web build",
     "start": "pnpm --filter @invoice/api start",
+    "start:render": "pnpm db:migrate && pnpm db:seed && pnpm start",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
