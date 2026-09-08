@@ -10,6 +10,11 @@ const envSchema = z.object({
     .string()
     .default("true")
     .transform((v) => v !== "false"),
+  /** When true, run full demo seed even if the library already has all fixtures. */
+  SEED_FORCE: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
 });
 

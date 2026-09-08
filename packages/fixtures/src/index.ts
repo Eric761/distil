@@ -6,6 +6,9 @@ import type { AttemptOutcome, FieldSpec, RecordedBox, Section } from "./types.js
 
 export const SCHEMA_VERSION = "invoice.v1";
 
+/** Built-in demo invoices ingested by `pnpm db:seed` (no PDF rendering). */
+export const DEMO_SEED_DOCUMENT_COUNT = fixtureDefinitions().length;
+
 export interface ResolvedSourceReference {
   id: string;
   page: number;

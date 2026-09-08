@@ -2,7 +2,7 @@
 # Fastify serves /api/* and the built Vite assets from the same origin (no CORS).
 #
 # Free tier: preDeployCommand is not supported — migrate + seed run via start:render.
-# Railway equivalent: build → release (migrate + seed) → start.
+# Health check: /api/health (set in Dashboard if deploy times out — see README § Deployment).
 services:
   - type: web
     name: distil

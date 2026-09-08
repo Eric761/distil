@@ -1,4 +1,5 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
+import { DEMO_SEED_DOCUMENT_COUNT } from "@invoice/fixtures";
 import { closeDb, getDb } from "./client.js";
 import { loadEnv } from "../env.js";
 import { documents, extractionFields, invoiceRecords, processingAttempts } from "./schema.js";
@@ -153,11 +154,27 @@ async function holdProcessingState(
   });
 }
 
+async function getDocumentCount(): Promise<number> {
+  const db = getDb();
+  const [row] = await db.select({ value: count() }).from(documents);
+  return row?.value ?? 0;
+}
+
 async function main(): Promise<void> {
   const env = loadEnv();
   if (!env.SEED_DEMO_DATA) {
     // eslint-disable-next-line no-console
     console.log("SEED_DEMO_DATA is false; skipping demo seed.");
+    await closeDb();
+    return;
+  }
+
+  const existingCount = await getDocumentCount();
+  if (!env.SEED_FORCE && existingCount >= DEMO_SEED_DOCUMENT_COUNT) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `seed skipped — library has ${existingCount} documents (demo target: ${DEMO_SEED_DOCUMENT_COUNT}). Set SEED_FORCE=true to re-run.`,
+    );
     await closeDb();
     return;
   }

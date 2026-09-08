@@ -281,6 +281,7 @@ pnpm db:migrate && pnpm db:seed
 | Uploaded PDF fails to extract | Expected — only built-in samples extract; use **Ingest** on a sample |
 | API/Vite port in use | Change `PORT` in `.env` or Vite’s dev port |
 | PostgreSQL port 5432 in use | Remap in `docker-compose.yml` + update `DATABASE_URL` (see [Quick start](#quick-start)) |
+| Render deploy fails health check | First boot waits for seed; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
 | Migration "identifier will be truncated" NOTICE | Harmless PostgreSQL notice |
 
 ---
@@ -296,9 +297,24 @@ pnpm start                        # health: GET /api/health
 ```
 
 **Render (recommended):** connect the repo and apply [`render.yaml`](render.yaml).
-The blueprint provisions Postgres, runs migrate + seed on each deploy, and serves
-API + UI from one origin. Uploaded file bytes live in PostgreSQL, so redeploys do
-not erase uploads.
+The blueprint provisions Postgres (free tier), runs migrate + seed on each start via
+`start:render`, and serves API + UI from one origin. Uploaded file bytes live in
+PostgreSQL, so redeploys do not erase uploads. Seed **skips** when the library already
+has all demo fixtures (faster wake on free tier); use `SEED_FORCE=true` or
+`pnpm db:reset && pnpm db:seed` to rebuild demo state.
+
+**First deploy on Render (free tier):** migrate + seed run before the server listens,
+so the first boot can take **2–5 minutes**. Render probes `/api/health` only after
+the port is open. If the deploy fails with a health-check error:
+
+1. Open the **distil** web service → **Settings** → **Health Checks**.
+2. Confirm path is **`/api/health`** (must match `render.yaml`).
+3. Increase **Timeout** to **180 seconds** (or the maximum allowed) if the UI offers it.
+4. **Manual Deploy** again and watch **Logs** until you see `seed complete` and the
+   server listening on port 4000.
+
+Render allows up to **15 minutes** for a deploy to pass health checks before it
+cancels. A slow first seed is normal; later restarts are faster once data exists.
 
 **Railway:** PostgreSQL plugin + same env vars; `pnpm build` / `pnpm db:migrate &&
 pnpm db:seed` / `pnpm start`.
