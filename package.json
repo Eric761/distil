@@ -1,0 +1,29 @@
+{
+  "name": "distil",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r typecheck && pnpm --filter @invoice/web build",
+    "start": "pnpm --filter @invoice/api start",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @invoice/api db:generate",
+    "db:migrate": "pnpm --filter @invoice/api db:migrate",
+    "db:seed": "pnpm --filter @invoice/api db:seed",
+    "db:reset": "pnpm --filter @invoice/api db:reset"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

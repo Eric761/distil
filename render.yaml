@@ -1,0 +1,35 @@
+# Render.com blueprint: one same-origin Node service + managed PostgreSQL.
+# Fastify serves /api/* and the built Vite assets from the same origin (no CORS).
+#
+# Railway is equivalent: add a PostgreSQL plugin, set the same env vars,
+# use `pnpm build` (build), `pnpm db:migrate` (release/pre-deploy), `pnpm start` (start).
+services:
+  - type: web
+    name: distil
+    runtime: node
+    plan: starter
+    # Corepack activates the pinned pnpm from package.json.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    preDeployCommand: pnpm db:migrate && pnpm db:seed
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: MAX_UPLOAD_BYTES
+        value: "5242880"
+      - key: PROCESSING_DELAY_MS
+        value: "100"
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: distil-db
+          property: connectionString
+
+databases:
+  - name: distil-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"

@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply text-foreground antialiased;
+  /* Whisper-quiet top wash that settles into a flat neutral canvas: adds depth
+     behind the sticky blurred header and lets white cards lift, without any
+     color noise that would compete with the status colors in the tables. */
+  background-color: hsl(210 40% 96.5%);
+  background-image: linear-gradient(180deg, hsl(214 48% 98%) 0%, hsl(210 40% 96.5%) 360px);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Visible focus for keyboard users across interactive elements. */
+:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

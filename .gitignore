@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.env
+.env.local
+.DS_Store
+apps/web/dist/
+apps/api/dist/
+packages/contracts/dist/
+fixtures/generated/
+.vite/
+.pnpm-store/
