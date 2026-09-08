@@ -7,7 +7,7 @@ services:
   - type: web
     name: distil
     runtime: node
-    plan: starter
+    plan: free
     # Corepack activates the pinned pnpm from package.json.
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
     preDeployCommand: pnpm db:migrate && pnpm db:seed
@@ -31,5 +31,5 @@ services:
 
 databases:
   - name: distil-db
-    plan: basic-256mb
+    plan: free
     postgresMajorVersion: "16"
