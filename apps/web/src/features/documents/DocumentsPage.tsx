@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, Compass, FileStack, Loader2, Plus, RefreshCw, SearchX } from "lucide-react";
+import { AlertTriangle, Compass, FileStack, Loader2, RefreshCw, SearchX, Upload } from "lucide-react";
 import type { DocumentListQuery, ProcessingStatus, ReviewStatus } from "@invoice/contracts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -204,15 +204,8 @@ export function DocumentsPage() {
               </Button>
             ) : null}
             <UploadDialog>
-              <Button
-                variant={showBanner ? "outline" : "default"}
-                className={
-                  showBanner
-                    ? "border-border bg-background text-muted-foreground shadow-sm hover:border-foreground/20 hover:bg-muted hover:text-foreground"
-                    : undefined
-                }
-              >
-                <Plus className="size-4" aria-hidden="true" /> Upload
+              <Button variant={showBanner ? "outline" : "default"}>
+                <Upload className="size-4" aria-hidden="true" /> Upload
               </Button>
             </UploadDialog>
           </>
@@ -236,7 +229,7 @@ export function DocumentsPage() {
               <p className="max-w-prose text-sm text-muted-foreground">
                 Each sample demonstrates a real extraction challenge — clean data, different terminology,
                 a missing field, conflicting totals, nested line items, or a recoverable failure. Load one
-                to see the full review-to-query flow, or upload your own PDF.
+                to see the full review-to-query flow, or use Upload above for your own PDF.
               </p>
             </div>
             <SampleGallery />
