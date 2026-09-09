@@ -3,16 +3,19 @@ import { DistilMark } from "@/components/brand";
 import { Spinner } from "@/components/ui/spinner";
 import { pingApi } from "@/lib/api-client";
 
+/** Don't flash the full loader on warm servers — only show UI after this delay. */
+const WAKING_UI_DELAY_MS = 400;
+/** Never block the app forever if /api/ping is misconfigured or the API is down. */
+const MAX_WAIT_MS = 90_000;
+const POLL_DELAYS_MS = [500, 1000, 2000, 3000, 5000, 8000];
+
+const canvasClass =
+  "min-h-dvh bg-[hsl(210_40%_96.5%)] bg-gradient-to-b from-[hsl(214_48%_98%)] to-[hsl(210_40%_96.5%)]";
+
 /**
- * WakeGate keeps our own branded loader on screen while the API becomes
- * reachable, instead of letting the first data request fail against a
- * spun-down (cold-starting) backend.
- *
- * On free hosting (e.g. Render Free), the platform itself may show its own
- * "loading" page *before* our SPA shell is served — that part is outside our
- * control. But once our shell is running, this gate ensures users see the
- * Distil loader (not a broken error) while the API wakes, and it enters the
- * app automatically the moment `/api/ping` returns 200.
+ * WakeGate keeps a branded loader on screen while the API becomes reachable on
+ * cold starts. On warm loads the gate stays invisible so users go straight to
+ * the app.
  */
 export function WakeGate({
   children,
@@ -25,64 +28,84 @@ export function WakeGate({
   if (!enabled) return <>{children}</>;
 
   const [ready, setReady] = React.useState(false);
-  // "slow" flips on once the first quick check fails, so we can explain the
-  // wait ("waking the server") rather than showing a bare spinner forever.
-  const [slow, setSlow] = React.useState(false);
+  const [showWaking, setShowWaking] = React.useState(false);
+  const readyRef = React.useRef(false);
+
+  const markReady = React.useCallback(() => {
+    readyRef.current = true;
+    setReady(true);
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
 
+    const wakingTimer = window.setTimeout(() => {
+      if (!cancelled && !readyRef.current) setShowWaking(true);
+    }, WAKING_UI_DELAY_MS);
+
+    const maxWaitTimer = window.setTimeout(() => {
+      if (!cancelled && !readyRef.current) markReady();
+    }, MAX_WAIT_MS);
+
     async function waitForApi(): Promise<void> {
-      // Fast path: most loads are warm. Try once immediately.
       if (await pingApi(controller.signal)) {
-        if (!cancelled) setReady(true);
+        if (!cancelled) markReady();
         return;
       }
-      if (cancelled) return;
-      setSlow(true);
 
-      // Cold start: poll with a small backoff, capped, until the API answers.
-      const delays = [1000, 2000, 3000, 5000, 5000, 8000];
-      for (let attempt = 0; !cancelled; attempt += 1) {
-        const wait = delays[Math.min(attempt, delays.length - 1)]!;
-        await new Promise((resolve) => setTimeout(resolve, wait));
-        if (cancelled) return;
+      for (let attempt = 0; !cancelled && !readyRef.current; attempt += 1) {
+        const wait = POLL_DELAYS_MS[Math.min(attempt, POLL_DELAYS_MS.length - 1)]!;
+        await new Promise((resolve) => window.setTimeout(resolve, wait));
+        if (cancelled || readyRef.current) return;
         if (await pingApi(controller.signal)) {
-          if (!cancelled) setReady(true);
+          markReady();
           return;
         }
       }
     }
 
     void waitForApi();
+
     return () => {
       cancelled = true;
       controller.abort();
+      window.clearTimeout(wakingTimer);
+      window.clearTimeout(maxWaitTimer);
     };
-  }, []);
+  }, [markReady]);
 
   if (ready) return <>{children}</>;
 
+  if (!showWaking) {
+    return <div className={canvasClass} aria-hidden="true" />;
+  }
+
   return (
     <div
-      className="grid min-h-dvh place-items-center bg-background px-6 text-center"
+      className={`grid place-items-center px-6 py-12 ${canvasClass}`}
       role="status"
       aria-live="polite"
+      aria-label="Connecting to Distil"
     >
-      <div className="flex max-w-sm flex-col items-center gap-4">
-        <div className="grid size-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm ring-1 ring-inset ring-white/15">
-          <DistilMark className="size-6" />
+      <div className="w-full max-w-md rounded-xl border border-border bg-card/90 p-8 text-center shadow-sm backdrop-blur-sm">
+        <div className="mx-auto grid size-14 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm ring-1 ring-inset ring-white/15">
+          <DistilMark className="size-7" />
         </div>
-        <div className="space-y-1">
-          <p className="text-base font-semibold text-foreground">Distil</p>
-          <p className="text-sm text-muted-foreground">
-            {slow
-              ? "Waking the server — this can take up to a minute on the first visit after a while."
-              : "Loading…"}
+
+        <div className="mt-5 space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">Distil</h1>
+          <p className="text-sm font-light text-muted-foreground">Structure from Chaos</p>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Waking the server — first load after idle can take up to a minute on the free tier.
           </p>
+          <div className="flex justify-center">
+            <Spinner label="Connecting…" />
+          </div>
         </div>
-        <Spinner label={slow ? "Reconnecting…" : "Starting up…"} />
       </div>
     </div>
   );

@@ -1,11 +1,16 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as apiClient from "@/lib/api-client";
 import { server } from "@/test/msw-server";
 import { WakeGate } from "../WakeGate";
 
 describe("WakeGate", () => {
-  it("renders children once the API responds 200 on the first ping", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders children immediately when the API responds on the first ping", async () => {
     server.use(http.get("*/api/ping", () => HttpResponse.json({ ok: true })));
 
     render(
@@ -15,16 +20,11 @@ describe("WakeGate", () => {
     );
 
     expect(await screen.findByText("app content")).toBeInTheDocument();
+    expect(screen.queryByText(/Waking the server/i)).not.toBeInTheDocument();
   });
 
-  it("shows a branded waking message while the API is unreachable, then enters", async () => {
-    let warm = false;
-    server.use(
-      http.get("*/api/ping", () => {
-        if (!warm) return HttpResponse.error();
-        return HttpResponse.json({ ok: true });
-      }),
-    );
+  it("shows the waking card after a short delay when the API is unreachable", async () => {
+    vi.spyOn(apiClient, "pingApi").mockResolvedValue(false);
 
     render(
       <WakeGate enabled>
@@ -32,14 +32,14 @@ describe("WakeGate", () => {
       </WakeGate>,
     );
 
-    // First ping fails -> the "waking the server" copy is shown, not the app.
-    expect(await screen.findByText(/Waking the server/i)).toBeInTheDocument();
-    expect(screen.queryByText("app content")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Waking the server/i)).not.toBeInTheDocument();
 
-    // Backend comes up; the gate polls and lets us in.
-    warm = true;
-    await waitFor(() => expect(screen.getByText("app content")).toBeInTheDocument(), {
-      timeout: 5000,
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Waking the server/i)).toBeInTheDocument();
+      },
+      { timeout: 1000 },
+    );
+    expect(screen.queryByText("app content")).not.toBeInTheDocument();
   });
 });
