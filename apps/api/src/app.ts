@@ -15,7 +15,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   const env = loadEnv();
   const app = Fastify({
     logger: env.NODE_ENV !== "test",
-    bodyLimit: 1 * 1024 * 1024,
+    // Must cover MAX_UPLOAD_BYTES plus multipart boundaries/headers
+    bodyLimit: env.MAX_UPLOAD_BYTES + 256 * 1024,
     genReqId: () => globalThis.crypto.randomUUID(),
   });
 

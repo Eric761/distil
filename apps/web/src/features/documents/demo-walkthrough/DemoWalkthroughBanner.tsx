@@ -36,7 +36,11 @@ export function DemoWalkthroughBanner({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-          <Button size="sm" className="shadow-sm" onClick={onStart}>
+          <Button
+            size="sm"
+            className="border border-primary/35 bg-primary/15 font-semibold text-primary shadow-sm transition-[background-color,border-color,box-shadow] hover:border-primary/45 hover:bg-primary/25 hover:shadow-md"
+            onClick={onStart}
+          >
             Start walkthrough
             <ArrowRight className="size-3.5" aria-hidden="true" />
           </Button>

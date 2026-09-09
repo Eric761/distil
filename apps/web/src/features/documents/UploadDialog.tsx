@@ -89,8 +89,8 @@ export function UploadDialog({ children }: { children: React.ReactNode }) {
         <DialogHeader>
           <DialogTitle>Upload an invoice</DialogTitle>
           <DialogDescription>
-            PDF only, up to 5 MB. The demo extractor only recognizes the built-in samples; other PDFs
-            are stored but will report an unsupported-document notice.
+            PDF only, up to 5 MB. Use a seeded sample invoice to see extraction — other uploads are
+            stored, not processed
           </DialogDescription>
         </DialogHeader>
 

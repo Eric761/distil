@@ -43,10 +43,21 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
     const file = await request.file();
     if (!file) throw badRequest("No file was uploaded.");
 
-    const isPdf =
-      file.mimetype === "application/pdf" && file.filename.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      // Drain the stream so the request completes cleanly.
+    const filename = file.filename.toLowerCase();
+    if (!filename.endsWith(".pdf")) {
+      await file.toBuffer().catch(() => undefined);
+      throw new AppError({
+        code: ERROR_CODES.UNSUPPORTED_FILE,
+        status: 400,
+        title: "Unsupported file",
+        detail: "Only PDF files (.pdf) are supported.",
+      });
+    }
+
+    const mime = file.mimetype.toLowerCase();
+    const mimeAllowed =
+      mime === "application/pdf" || mime === "application/octet-stream" || mime === "binary/octet-stream";
+    if (mime && !mimeAllowed) {
       await file.toBuffer().catch(() => undefined);
       throw new AppError({
         code: ERROR_CODES.UNSUPPORTED_FILE,

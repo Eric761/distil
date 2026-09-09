@@ -204,7 +204,14 @@ export function DocumentsPage() {
               </Button>
             ) : null}
             <UploadDialog>
-              <Button>
+              <Button
+                variant={showBanner ? "outline" : "default"}
+                className={
+                  showBanner
+                    ? "border-border bg-background text-muted-foreground shadow-sm hover:border-foreground/20 hover:bg-muted hover:text-foreground"
+                    : undefined
+                }
+              >
                 <Plus className="size-4" aria-hidden="true" /> Upload
               </Button>
             </UploadDialog>
