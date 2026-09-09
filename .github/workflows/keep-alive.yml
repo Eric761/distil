@@ -12,19 +12,30 @@
 #     the SPA as a Render Static Site.
 #   - GitHub disables scheduled workflows after 60 days of repo inactivity; a
 #     manual run (workflow_dispatch) or any push re-enables it.
+#   - If only manual runs appear: Actions → keep-alive → "Enable workflow", or
+#     push this file again. Scheduled runs show event "schedule", not
+#     "workflow_dispatch". Set KEEP_ALIVE_URL in repo Actions variables.
 name: keep-alive
 
 on:
   schedule:
-    # Every 10 minutes. Cron on GitHub Actions is best-effort and may lag a few
-    # minutes under load, which is why we ping at 10 not 14 minutes.
-    - cron: "*/10 * * * *"
-  workflow_dispatch: {}
+    # Every 10 minutes (UTC). Minutes offset from :00/:30 to reduce GitHub
+    # scheduler queue drops during peak load (see GitHub schedule docs).
+    - cron: "2,12,22,32,42,52 * * * *"
+      timezone: "Etc/UTC"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/keep-alive.yml
 
 # Avoid piling up runs if a previous ping is still in flight during a cold start.
 concurrency:
   group: keep-alive
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   ping:
@@ -33,11 +44,11 @@ jobs:
     steps:
       - name: Ping /api/ping until warm
         env:
-          # Override in repo Settings → Secrets and variables → Actions → Variables
-          # if your service URL differs. Falls back to the known deploy URL.
+          # Override via repo variable KEEP_ALIVE_URL (Settings → Actions → Variables).
           KEEP_ALIVE_URL: ${{ vars.KEEP_ALIVE_URL || 'https://distil-mq94.onrender.com/api/ping' }}
         run: |
           set -euo pipefail
+          echo "event=${{ github.event_name }} branch=${{ github.ref_name }}"
           echo "Pinging $KEEP_ALIVE_URL"
           # Retry for up to ~2 minutes to absorb a cold start (Render wake ~1 min).
           # --max-time per attempt is generous; total capped by retries * delay.
