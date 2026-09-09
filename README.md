@@ -17,6 +17,7 @@ field-level provenance, and explainable querying.
 
 - [Quick start](#quick-start)
 - [Guided evaluator demo](#guided-evaluator-demo)
+- [Product tour](#product-tour)
 - [What this is](#what-this-is)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -83,6 +84,36 @@ automatically on deploy.
 4. **Redbrick Consulting** — retry after failure; partial extraction.
 5. **Acme Office Supply** — clean invoice; approve into the trusted set.
 6. **Query** → `invoices from Acme above 500 in USD` → click a result’s source link.
+
+---
+
+## Product tour
+
+Screenshots follow the same **review → approve → query** path as the in-app walkthrough.
+
+**1. Documents — evaluator banner (first visit)**
+
+![Documents workspace with the compact evaluator banner and Start walkthrough CTA](docs/screenshots/01-documents-evaluator-banner.png)
+
+**2. Documents — guided walkthrough panel**
+
+![Expanded five-step evaluator walkthrough on the Documents page](docs/screenshots/02-documents-walkthrough-panel.png)
+
+**3. Review queue — prioritized open issues**
+
+![Review queue listing open extraction and validation issues across documents](docs/screenshots/03-review-queue.png)
+
+**4. Review workspace — PDF, fields, and provenance**
+
+![Split review workspace with invoice PDF, structured fields, and source highlighting](docs/screenshots/04-review-split-workspace.png)
+
+**5. Documents — full library and workspace stats**
+
+![Document library table with extraction status, review state, and workspace summary](docs/screenshots/05-documents-library.png)
+
+**6. Query — approved records with traceability**
+
+![Query page with natural-language filters, approved results, and source links](docs/screenshots/06-query-approved-records.png)
 
 ---
 
