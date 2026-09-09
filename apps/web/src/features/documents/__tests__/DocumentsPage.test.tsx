@@ -45,14 +45,28 @@ describe("DocumentsPage", () => {
     localStorage.removeItem(DEMO_WALKTHROUGH_STORAGE_KEY);
   });
 
-  it("renders the document library and evaluator walkthrough", async () => {
+  it("renders the document library and evaluator walkthrough banner", async () => {
     mockDocumentList();
     renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
 
     expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
-    expect(screen.getByText("5-minute evaluator walkthrough")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /evaluator guide/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /see review → approve → query in action/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /evaluator guide/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /acme-office-supply-invoice\.pdf/i })).toBeInTheDocument();
+  });
+
+  it("expands the walkthrough from the banner", async () => {
+    mockDocumentList();
+    renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
+
+    expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /start walkthrough/i }));
+    expect(screen.getByRole("heading", { name: /five steps: review → approve → query/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /see review → approve → query in action/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /evaluator guide/i })).toBeInTheDocument();
   });
 
   it("reopens the walkthrough from the header after dismiss", async () => {
@@ -61,10 +75,10 @@ describe("DocumentsPage", () => {
     renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
 
     expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
-    expect(screen.queryByText("5-minute evaluator walkthrough")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /evaluator guide/i }));
-    expect(screen.getByText("5-minute evaluator walkthrough")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /five steps: review → approve → query/i })).toBeInTheDocument();
   });
 
   it("shows a recoverable error state when the list request fails", async () => {

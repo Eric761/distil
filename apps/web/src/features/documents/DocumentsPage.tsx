@@ -17,7 +17,7 @@ import { DocumentsSummary, DocumentsSummarySkeleton } from "./DocumentsSummary";
 import { DocumentsTable } from "./DocumentsTable";
 import { DocumentsToolbar, type ToolbarValue } from "./DocumentsToolbar";
 import { SampleGallery } from "./SampleGallery";
-import { DemoWalkthroughPanel, useDemoWalkthrough } from "./demo-walkthrough";
+import { DemoWalkthroughBanner, DemoWalkthroughPanel, useDemoWalkthrough } from "./demo-walkthrough";
 import { UploadDialog } from "./UploadDialog";
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50] as const;
@@ -49,7 +49,7 @@ function buildParams(sp: URLSearchParams): Partial<DocumentListQuery> {
 }
 
 export function DocumentsPage() {
-  const { isOpen: isWalkthroughOpen, open: openWalkthrough, dismiss: dismissWalkthrough } = useDemoWalkthrough();
+  const { showBanner, showPanel, openGuide, dismiss: dismissWalkthrough } = useDemoWalkthrough();
   const [sp, setSp] = useSearchParams();
   const params = React.useMemo(() => buildParams(sp), [sp]);
   const { data, isLoading, isFetching, isPlaceholderData, isError, error, refetch } = useDocumentList(params);
@@ -198,9 +198,11 @@ export function DocumentsPage() {
         descriptionClassName="max-w-none"
         actions={
           <>
-            <Button variant="outline" onClick={openWalkthrough}>
-              <Compass className="size-4" aria-hidden="true" /> Evaluator guide
-            </Button>
+            {!showBanner ? (
+              <Button variant="outline" onClick={openGuide}>
+                <Compass className="size-4" aria-hidden="true" /> Evaluator guide
+              </Button>
+            ) : null}
             <UploadDialog>
               <Button>
                 <Plus className="size-4" aria-hidden="true" /> Upload
@@ -210,7 +212,11 @@ export function DocumentsPage() {
         }
       />
 
-      {isWalkthroughOpen ? <DemoWalkthroughPanel onDismiss={dismissWalkthrough} /> : null}
+      {showBanner ? (
+        <DemoWalkthroughBanner onStart={openGuide} onDismiss={dismissWalkthrough} />
+      ) : null}
+
+      {showPanel ? <DemoWalkthroughPanel onDismiss={dismissWalkthrough} /> : null}
 
       {isFirstTime ? (
         <Card>

@@ -28,7 +28,7 @@ function renderPanel(onDismiss = vi.fn()) {
 describe("DemoWalkthroughPanel", () => {
   it("renders all five evaluator steps", () => {
     renderPanel();
-    expect(screen.getByRole("heading", { name: /5-minute evaluator walkthrough/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /five steps: review → approve → query/i })).toBeInTheDocument();
     expect(screen.getByText("Greenline Maintenance")).toBeInTheDocument();
     expect(screen.getByText("Query approved records")).toBeInTheDocument();
     expect(screen.getAllByText(/^Step \d$/)).toHaveLength(5);

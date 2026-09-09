@@ -36,11 +36,10 @@ export function DemoWalkthroughPanel({ onDismiss }: Readonly<{ onDismiss: () => 
               </div>
               <div>
                 <h2 id="demo-walkthrough-title" className="text-base font-semibold sm:text-lg">
-                  5-minute evaluator walkthrough
+                  Five steps: review → approve → query
                 </h2>
                 <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-                  Follow these steps to see the full trust loop: review uncertain fields, resolve blockers,
-                  approve trusted records, then query with traceability back to the source PDF.
+                  Open each example below — resolve flagged fields, approve trusted records, then query with proof from the PDF
                 </p>
               </div>
             </div>

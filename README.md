@@ -3,19 +3,20 @@
 Turn messy documents into **trusted, searchable records** — with human verification,
 field-level provenance, and explainable querying.
 
-| | |
-| --- | --- |
-| **Stack** | React · Fastify · PostgreSQL · TypeScript |
-| **Demo data** | 29 seeded invoices (approved, review, failed, in-flight) |
-| **Local app** | [http://localhost:5173](http://localhost:5173) (API on `:4000`) |
-| **Design notes** | [`decisions.md`](decisions.md) |
+|                  |                                                                      |
+| ---------------- | -------------------------------------------------------------------- |
+| **Live demo**    | [https://distil-mq94.onrender.com](https://distil-mq94.onrender.com) |
+| **Stack**        | React · Fastify · PostgreSQL · TypeScript                            |
+| **Demo data**    | 29 seeded invoices (approved, review, failed, in-flight)             |
+| **Local app**    | [http://localhost:5173](http://localhost:5173) (API on `:4000`)      |
+| **Design notes** | [`decisions.md`](decisions.md)                                       |
 
 ---
 
 ## Contents
 
 - [Quick start](#quick-start)
-- [5-minute evaluator demo](#5-minute-evaluator-demo)
+- [Guided evaluator demo](#guided-evaluator-demo)
 - [What this is](#what-this-is)
 - [Features](#features)
 - [Architecture](#architecture)
@@ -67,12 +68,16 @@ DATABASE_URL=postgres://distil:distil@localhost:5433/distil
 
 ---
 
-## 5-minute evaluator demo
+## Guided evaluator demo
+
+**Live:** [https://distil-mq94.onrender.com](https://distil-mq94.onrender.com) — a
+compact banner on first visit with **Start walkthrough**. Dismiss it or finish the
+guide, then reopen anytime via **Evaluator guide** in the header.
 
 Skip local setup? Deploy with [`render.yaml`](render.yaml) — migrate and seed run
 automatically on deploy.
 
-1. Open the app → **Evaluator guide** on Documents (or the walkthrough card).
+1. Open the app → click **Start walkthrough** on the banner.
 2. **Greenline Maintenance** — ambiguous invoice number; approval blocked.
 3. **Atlas Industrial** — conflicting totals; pick the trusted candidate.
 4. **Redbrick Consulting** — retry after failure; partial extraction.
@@ -90,8 +95,8 @@ The hard problem is not extraction. It is **converting uncertain extraction into
 trusted data**: surfacing uncertainty, proving where each value came from,
 preserving corrections, and blocking approval while material issues remain.
 
-This submission interprets the brief as: *unstructured invoice PDFs → clean,
-structured, queryable data with human trust*. Extraction is a **deterministic
+This submission interprets the brief as: _unstructured invoice PDFs → clean,
+structured, queryable data with human trust_. Extraction is a **deterministic
 fixture simulation** so the async pipeline, review workspace, provenance, approval
 gates, and query loop stay reliable in evaluation.
 
@@ -144,12 +149,12 @@ Invoice PDF
 
 ## Architecture
 
-| Layer | Technology |
-| --- | --- |
-| Web | React 18, Vite, TanStack Query, React Hook Form, Zod, Tailwind, Radix, pdfjs |
-| API | Node, Fastify, Drizzle ORM, in-process worker |
-| DB | PostgreSQL — JSONB raw extraction + normalized relational records |
-| Shared | `packages/contracts` — Zod schemas for web + API |
+| Layer  | Technology                                                                   |
+| ------ | ---------------------------------------------------------------------------- |
+| Web    | React 18, Vite, TanStack Query, React Hook Form, Zod, Tailwind, Radix, pdfjs |
+| API    | Node, Fastify, Drizzle ORM, in-process worker                                |
+| DB     | PostgreSQL — JSONB raw extraction + normalized relational records            |
+| Shared | `packages/contracts` — Zod schemas for web + API                             |
 
 ```text
 Production                         Local dev
@@ -216,14 +221,14 @@ no extraction are retried from their review page.
 
 Highlighted samples from the seeded library:
 
-| Sample | Scenario | Outcome |
-| --- | --- | --- |
-| Acme Office Supply | Clean invoice, high confidence | Ready to approve fast |
-| Northstar Logistics | Terminology variation ("Bill No.", "Issued", "Pay by") | Needs review; source proves normalization |
-| Greenline Maintenance | Missing invoice number | Approval blocked until corrected |
-| Atlas Industrial | Conflicting totals (invoice total vs. balance due) | Pick the trusted candidate |
-| Meridian Components | 12 EUR line items, qty × unit-price mismatch | Line-item editing + reconciliation warning |
-| Redbrick Consulting | First attempt fails deterministically | **Retry** yields partial extraction |
+| Sample                | Scenario                                               | Outcome                                    |
+| --------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| Acme Office Supply    | Clean invoice, high confidence                         | Ready to approve fast                      |
+| Northstar Logistics   | Terminology variation ("Bill No.", "Issued", "Pay by") | Needs review; source proves normalization  |
+| Greenline Maintenance | Missing invoice number                                 | Approval blocked until corrected           |
+| Atlas Industrial      | Conflicting totals (invoice total vs. balance due)     | Pick the trusted candidate                 |
+| Meridian Components   | 12 EUR line items, qty × unit-price mismatch           | Line-item editing + reconciliation warning |
+| Redbrick Consulting   | First attempt fails deterministically                  | **Retry** yields partial extraction        |
 
 Processing uses a persisted state machine with lease-based recovery — if the server
 restarts mid-extraction, stuck attempts are re-queued.
@@ -256,9 +261,9 @@ pnpm build        # typecheck + build web bundle
 pnpm start        # production: API + built UI on $PORT
 ```
 
-| Package | Test locations |
-| --- | --- |
-| `apps/web` | `src/features/**/__tests__/`, `src/components/__tests__/` |
+| Package    | Test locations                                                           |
+| ---------- | ------------------------------------------------------------------------ |
+| `apps/web` | `src/features/**/__tests__/`, `src/components/__tests__/`                |
 | `apps/api` | `src/lib/__tests__/`, `src/services/__tests__/`, `src/routes/__tests__/` |
 
 Run one workspace: `pnpm --filter @invoice/web test` or `pnpm --filter @invoice/api test`.
@@ -274,15 +279,15 @@ pnpm db:migrate && pnpm db:seed
 
 ## Troubleshooting
 
-| Symptom | Fix |
-| --- | --- |
-| `Invalid environment configuration` | `cp .env.example .env` and set `DATABASE_URL` |
-| Empty document library | `pnpm db:migrate && pnpm db:seed` |
-| Uploaded PDF fails to extract | Expected — only built-in samples extract; use **Ingest** on a sample |
-| API/Vite port in use | Change `PORT` in `.env` or Vite’s dev port |
-| PostgreSQL port 5432 in use | Remap in `docker-compose.yml` + update `DATABASE_URL` (see [Quick start](#quick-start)) |
-| Render deploy fails health check | First boot waits for seed; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
-| Migration "identifier will be truncated" NOTICE | Harmless PostgreSQL notice |
+| Symptom                                         | Fix                                                                                                                        |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid environment configuration`             | `cp .env.example .env` and set `DATABASE_URL`                                                                              |
+| Empty document library                          | `pnpm db:migrate && pnpm db:seed`                                                                                          |
+| Uploaded PDF fails to extract                   | Expected — only built-in samples extract; use **Ingest** on a sample                                                       |
+| API/Vite port in use                            | Change `PORT` in `.env` or Vite’s dev port                                                                                 |
+| PostgreSQL port 5432 in use                     | Remap in `docker-compose.yml` + update `DATABASE_URL` (see [Quick start](#quick-start))                                    |
+| Render deploy fails health check                | First boot waits for seed; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
+| Migration "identifier will be truncated" NOTICE | Harmless PostgreSQL notice                                                                                                 |
 
 ---
 
