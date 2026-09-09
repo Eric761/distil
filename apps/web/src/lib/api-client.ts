@@ -82,6 +82,24 @@ export async function apiRequest<T>(path: string, options: RequestOptions<T>): P
   return parsed.data;
 }
 
+/**
+ * Lightweight liveness check against the API's `/api/ping` endpoint. Resolves
+ * true on a 200, false otherwise (including network errors). Never throws, so
+ * callers can poll it in a loop while a spun-down host wakes up.
+ */
+export async function pingApi(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/ping`, {
+      method: "GET",
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export interface UploadProgress {
   loaded: number;
   total: number;

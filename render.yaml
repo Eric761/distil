@@ -1,8 +1,9 @@
 # Render.com blueprint: one same-origin Node service + managed PostgreSQL.
 # Fastify serves /api/* and the built Vite assets from the same origin (no CORS).
 #
-# Free tier: preDeployCommand is not supported — migrate + seed run via start:render.
+# Migrate runs in-process on each wake (fast). Seed runs once per deploy via releaseCommand.
 # Health check: /api/health (set in Dashboard if deploy times out — see README § Deployment).
+# Keep-alive: GET /api/ping every ≤10 min — see .github/workflows/keep-alive.yml and README § Deployment.
 services:
   - type: web
     name: distil
@@ -10,7 +11,8 @@ services:
     plan: free
     # corepack enable fails on Render (read-only /usr/local/bin). Use npx instead.
     buildCommand: npx --yes pnpm@10.26.2 install --frozen-lockfile && npx --yes pnpm@10.26.2 build
-    startCommand: npx --yes pnpm@10.26.2 run start:render
+    releaseCommand: npx --yes pnpm@10.26.2 run db:migrate && npx --yes pnpm@10.26.2 run db:seed
+    startCommand: npx --yes pnpm@10.26.2 run start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

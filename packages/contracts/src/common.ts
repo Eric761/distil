@@ -47,6 +47,12 @@ export const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/u, "Must be an ISO date (YYYY-MM-DD)");
 
+/**
+ * Date value as extracted or stored during review. May not be ISO-normalized
+ * until a human corrects it (e.g. "09/17/2024" pending normalization).
+ */
+export const rawDate = z.string();
+
 /** Document type. MVP only parses invoices/vendor bills. */
 export const documentType = z.enum(["invoice"]);
 export type DocumentType = z.infer<typeof documentType>;

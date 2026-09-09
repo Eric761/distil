@@ -1,0 +1,54 @@
+# Keeps the free-tier Render web service warm so visitors rarely hit a cold start.
+#
+# Render spins a Free web service down after 15 minutes with no inbound traffic;
+# waking it shows Render's own loading page for ~1 minute. Pinging every 10 minutes
+# leaves a 5-minute safety margin so a single slow/missed run never crosses the
+# 15-minute window.
+#
+# Notes / trade-offs (Free tier reality):
+#   - Keeping one service warm ~24/7 consumes most of the 750 free instance-hours
+#     per month. If you exhaust them, Render suspends the service until the next
+#     month. If that matters, upgrade to the Starter plan (never sleeps) or host
+#     the SPA as a Render Static Site.
+#   - GitHub disables scheduled workflows after 60 days of repo inactivity; a
+#     manual run (workflow_dispatch) or any push re-enables it.
+name: keep-alive
+
+on:
+  schedule:
+    # Every 10 minutes. Cron on GitHub Actions is best-effort and may lag a few
+    # minutes under load, which is why we ping at 10 not 14 minutes.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+# Avoid piling up runs if a previous ping is still in flight during a cold start.
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /api/ping until warm
+        env:
+          # Override in repo Settings → Secrets and variables → Actions → Variables
+          # if your service URL differs. Falls back to the known deploy URL.
+          KEEP_ALIVE_URL: ${{ vars.KEEP_ALIVE_URL || 'https://distil-mq94.onrender.com/api/ping' }}
+        run: |
+          set -euo pipefail
+          echo "Pinging $KEEP_ALIVE_URL"
+          # Retry for up to ~2 minutes to absorb a cold start (Render wake ~1 min).
+          # --max-time per attempt is generous; total capped by retries * delay.
+          for attempt in $(seq 1 8); do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$KEEP_ALIVE_URL" || echo 000)"
+            echo "attempt $attempt -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Service is warm."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Service did not return 200 after retries." >&2
+          exit 1

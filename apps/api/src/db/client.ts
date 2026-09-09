@@ -9,7 +9,13 @@ let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null;
 export function getSql(): ReturnType<typeof postgres> {
   if (!sqlClient) {
     const env = loadEnv();
-    sqlClient = postgres(env.DATABASE_URL, { max: 10 });
+    // Tuned for Render free tier: short connect timeout, modest pool, quick idle release.
+    sqlClient = postgres(env.DATABASE_URL, {
+      max: 5,
+      connect_timeout: 30,
+      idle_timeout: 20,
+      max_lifetime: 60 * 30,
+    });
   }
   return sqlClient;
 }

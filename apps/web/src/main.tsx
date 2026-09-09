@@ -5,6 +5,7 @@ import { RouterProvider } from "react-router-dom";
 import { createQueryClient } from "./app/query-client";
 import { router } from "./app/router";
 import { ErrorBoundary } from "./app/ErrorBoundary";
+import { WakeGate } from "./app/WakeGate";
 import { AnnouncerProvider } from "./components/live-region";
 import "./index.css";
 
@@ -13,11 +14,13 @@ const queryClient = createQueryClient();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AnnouncerProvider>
-          <RouterProvider router={router} />
-        </AnnouncerProvider>
-      </QueryClientProvider>
+      <WakeGate>
+        <QueryClientProvider client={queryClient}>
+          <AnnouncerProvider>
+            <RouterProvider router={router} />
+          </AnnouncerProvider>
+        </QueryClientProvider>
+      </WakeGate>
     </ErrorBoundary>
   </React.StrictMode>,
 );

@@ -160,12 +160,14 @@ async function getDocumentCount(): Promise<number> {
   return row?.value ?? 0;
 }
 
-async function main(): Promise<void> {
+export async function runSeed(options?: { closeAfter?: boolean }): Promise<void> {
   const env = loadEnv();
   if (!env.SEED_DEMO_DATA) {
     // eslint-disable-next-line no-console
     console.log("SEED_DEMO_DATA is false; skipping demo seed.");
-    await closeDb();
+    if (options?.closeAfter) {
+      await closeDb();
+    }
     return;
   }
 
@@ -175,7 +177,9 @@ async function main(): Promise<void> {
     console.log(
       `seed skipped — library has ${existingCount} documents (demo target: ${DEMO_SEED_DOCUMENT_COUNT}). Set SEED_FORCE=true to re-run.`,
     );
-    await closeDb();
+    if (options?.closeAfter) {
+      await closeDb();
+    }
     return;
   }
 
@@ -226,13 +230,19 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line no-console
   console.log(`seed complete — ${seededIds.size} demo documents`);
-  await closeDb();
+  if (options?.closeAfter) {
+    await closeDb();
+  }
 }
 
-try {
-  await main();
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.error("seed failed", error);
-  process.exit(1);
+async function main(): Promise<void> {
+  await runSeed({ closeAfter: true });
+}
+
+if (import.meta.main) {
+  main().catch((error) => {
+    // eslint-disable-next-line no-console
+    console.error("seed failed", error);
+    process.exit(1);
+  });
 }

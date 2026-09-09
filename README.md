@@ -317,7 +317,10 @@ pnpm db:migrate && pnpm db:seed
 | Uploaded PDF fails to extract                   | Expected — only built-in samples extract; use **Ingest** on a sample                                                       |
 | API/Vite port in use                            | Change `PORT` in `.env` or Vite’s dev port                                                                                 |
 | PostgreSQL port 5432 in use                     | Remap in `docker-compose.yml` + update `DATABASE_URL` (see [Quick start](#quick-start))                                    |
-| Render deploy fails health check                | First boot waits for seed; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
+| Render deploy fails health check                | First deploy seed is slow; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
+| Site shows Render loading screen after idle     | Cold start — keep warm via the `/api/ping` cron ≤10 min; screen is Render's own and unavoidable on free tier (see [Deployment](#deployment)) |
+| UptimeRobot shows Down but site loads eventually | Monitor URL or timeout is wrong — use `/api/ping` (not `/documents/`), ≤10-min interval, 90s timeout |
+| Loading screen returns mid-month on free tier    | 750 free instance-hours exhausted → service suspended; upgrade to Starter or move SPA to a Static Site |
 | Migration "identifier will be truncated" NOTICE | Harmless PostgreSQL notice                                                                                                 |
 
 ---
@@ -333,15 +336,50 @@ pnpm start                        # health: GET /api/health
 ```
 
 **Render (recommended):** connect the repo and apply [`render.yaml`](render.yaml).
-The blueprint provisions Postgres (free tier), runs migrate + seed on each start via
-`start:render`, and serves API + UI from one origin. Uploaded file bytes live in
-PostgreSQL, so redeploys do not erase uploads. Seed **skips** when the library already
-has all demo fixtures (faster wake on free tier); use `SEED_FORCE=true` or
-`pnpm db:reset && pnpm db:seed` to rebuild demo state.
+The blueprint provisions Postgres (free tier), runs migrate + seed once per deploy via
+`releaseCommand`, and serves API + UI from one origin. On each wake from sleep the
+server runs a fast in-process migrate and starts listening immediately — seed does
+**not** block cold starts. Uploaded file bytes live in PostgreSQL, so redeploys do
+not erase uploads. Seed **skips** when the library already has all demo fixtures; use
+`SEED_FORCE=true` or `pnpm db:reset && pnpm db:seed` to rebuild demo state.
 
-**First deploy on Render (free tier):** migrate + seed run before the server listens,
-so the first boot can take **2–5 minutes**. Render probes `/api/health` only after
-the port is open. If the deploy fails with a health-check error:
+**Keep-alive & cold starts (free tier reality):** Render spins a Free web service
+**down after 15 minutes** with no inbound traffic. Waking it takes ~1 minute, during
+which **Render serves its own loading page** to the browser — this happens *before*
+our app is running, so no app code can replace that page. Two things reduce how often
+users hit it:
+
+1. **Keep it warm** with a scheduled ping to **`/api/ping`** (lightweight, no DB).
+   This repo ships a GitHub Actions cron at
+   [`.github/workflows/keep-alive.yml`](.github/workflows/keep-alive.yml) that pings
+   **every 10 minutes** (5-minute safety margin under the 15-minute limit). Set the
+   repo variable `KEEP_ALIVE_URL` (Settings → Secrets and variables → Actions →
+   Variables) to `https://<your-service>.onrender.com/api/ping`, or edit the default
+   in the workflow. An external monitor (UptimeRobot, Runhooks) works too — use
+   `/api/ping`, a **≤10-minute** interval, and a **90-second** timeout so a slow wake
+   isn't flagged as down.
+2. **Wake gracefully in the UI.** Once our SPA shell loads, `WakeGate`
+   ([`apps/web/src/app/WakeGate.tsx`](apps/web/src/app/WakeGate.tsx)) polls `/api/ping`
+   and shows a **branded "waking the server" loader** (auto-entering when the API
+   answers) instead of letting the first data request error out.
+
+| Ping setting | Value |
+| ------------ | ----- |
+| URL | `https://<your-service>.onrender.com/api/ping` |
+| Interval | **10 minutes** (never more than 15) |
+| Timeout | 90 seconds |
+| Expected status | `200` |
+
+> **Free-tier trade-off:** keeping one service warm ~24/7 consumes most of the **750
+> free instance-hours/month**. If you exhaust them, Render **suspends** the service
+> until the next month (loading screen returns). For a demo this is usually fine; if
+> a guaranteed-instant first load matters, use Render **Starter ($7/mo, never sleeps)**
+> or host the SPA as a **Render Static Site** (never sleeps) with the API on free.
+
+**First deploy on Render (free tier):** `releaseCommand` runs migrate + seed before
+the new version goes live; the first seed can take **2–5 minutes**. Render probes
+`/api/health` only after the port is open. If the deploy fails with a health-check
+error:
 
 1. Open the **distil** web service → **Settings** → **Health Checks**.
 2. Confirm path is **`/api/health`** (must match `render.yaml`).
@@ -350,7 +388,7 @@ the port is open. If the deploy fails with a health-check error:
    server listening on port 4000.
 
 Render allows up to **15 minutes** for a deploy to pass health checks before it
-cancels. A slow first seed is normal; later restarts are faster once data exists.
+cancels. A slow first seed is normal; later wakes are much faster.
 
 **Railway:** PostgreSQL plugin + same env vars; `pnpm build` / `pnpm db:migrate &&
 pnpm db:seed` / `pnpm start`.
