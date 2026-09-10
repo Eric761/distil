@@ -1,41 +1,40 @@
 # Keeps the free-tier Render web service warm so visitors rarely hit a cold start.
 #
-# Render spins a Free web service down after 15 minutes with no inbound traffic;
-# waking it shows Render's own loading page for ~1 minute. Pinging every 10 minutes
-# leaves a 5-minute safety margin so a single slow/missed run never crosses the
-# 15-minute window.
+# Render spins a Free web service down after ~15 minutes with no inbound traffic;
+# waking it shows Render's own loading page for ~1 minute. Pinging /api/ping every
+# 10 minutes leaves a safety margin under that 15-minute window.
 #
-# Notes / trade-offs (Free tier reality):
-#   - Keeping one service warm ~24/7 consumes most of the 750 free instance-hours
-#     per month. If you exhaust them, Render suspends the service until the next
-#     month. If that matters, upgrade to the Starter plan (never sleeps) or host
-#     the SPA as a Render Static Site.
-#   - GitHub disables scheduled workflows after 60 days of repo inactivity; a
-#     manual run (workflow_dispatch) or any push re-enables it.
-#   - If only manual runs appear: Actions → keep-alive → "Enable workflow", or
-#     push this file again. Scheduled runs show event "schedule", not
-#     "workflow_dispatch". Set KEEP_ALIVE_URL in repo Actions variables.
+# The real keep-alive here is an external monitor (UptimeRobot / cron-job.org)
+# hitting /api/ping every ≤10 min — that does not depend on GitHub's scheduler and
+# is the most reliable free option. This workflow is a best-effort secondary and a
+# manual "wake it now" button.
+#
+# IMPORTANT: KEEP_ALIVE_URL must point at the LIVE service host. The correct host is
+# https://distil-mq5q.onrender.com (see Render dashboard → distil → URL under the
+# service name). A wrong host returns 404 with header "x-render-routing: no-server".
+# Override without editing this file via repo variable KEEP_ALIVE_URL.
+#
+# Free-tier note: keeping one service warm ~24/7 uses most of Render's 750 free
+# instance-hours/month; if exhausted, Render suspends the service until month reset.
 name: keep-alive
 
 on:
-  schedule:
-    # Every 10 minutes (UTC). Minutes offset from :00/:30 to reduce GitHub
-    # scheduler queue drops during peak load (see GitHub schedule docs).
-    - cron: "2,12,22,32,42,52 * * * *"
-      timezone: "Etc/UTC"
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - .github/workflows/keep-alive.yml
-
-# Avoid piling up runs if a previous ping is still in flight during a cold start.
-concurrency:
-  group: keep-alive
-  cancel-in-progress: false
+  schedule:
+    # Best-effort only (UTC). GitHub free cron is unreliable/sparse; rely on an
+    # external monitor for the true 10-minute cadence.
+    - cron: "*/10 * * * *"
 
 permissions:
   contents: read
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: true
 
 jobs:
   ping:
@@ -44,14 +43,11 @@ jobs:
     steps:
       - name: Ping /api/ping until warm
         env:
-          # Override via repo variable KEEP_ALIVE_URL (Settings → Actions → Variables).
-          KEEP_ALIVE_URL: ${{ vars.KEEP_ALIVE_URL || 'https://distil-mq94.onrender.com/api/ping' }}
+          KEEP_ALIVE_URL: ${{ vars.KEEP_ALIVE_URL || 'https://distil-mq5q.onrender.com/api/ping' }}
         run: |
           set -euo pipefail
-          echo "event=${{ github.event_name }} branch=${{ github.ref_name }}"
-          echo "Pinging $KEEP_ALIVE_URL"
-          # Retry for up to ~2 minutes to absorb a cold start (Render wake ~1 min).
-          # --max-time per attempt is generous; total capped by retries * delay.
+          echo "event=${{ github.event_name }} url=$KEEP_ALIVE_URL"
+          # Retry for ~2 minutes to absorb a cold start (Render wake ~1 min).
           for attempt in $(seq 1 8); do
             code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$KEEP_ALIVE_URL" || echo 000)"
             echo "attempt $attempt -> HTTP $code"
@@ -61,5 +57,5 @@ jobs:
             fi
             sleep 15
           done
-          echo "Service did not return 200 after retries." >&2
+          echo "::error::$KEEP_ALIVE_URL did not return 200. A 404 with 'x-render-routing: no-server' means the URL is wrong — check the live host in the Render dashboard." >&2
           exit 1

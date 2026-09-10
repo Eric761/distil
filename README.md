@@ -5,7 +5,7 @@ field-level provenance, and explainable querying.
 
 |                  |                                                                      |
 | ---------------- | -------------------------------------------------------------------- |
-| **Live demo**    | [https://distil-mq94.onrender.com](https://distil-mq94.onrender.com) |
+| **Live demo**    | [https://distil-mq5q.onrender.com](https://distil-mq5q.onrender.com) |
 | **Stack**        | React · Fastify · PostgreSQL · TypeScript                            |
 | **Demo data**    | 29 seeded invoices (approved, review, failed, in-flight)             |
 | **Local app**    | [http://localhost:5173](http://localhost:5173) (API on `:4000`)      |
@@ -71,7 +71,7 @@ DATABASE_URL=postgres://distil:distil@localhost:5433/distil
 
 ## Guided evaluator demo
 
-**Live:** [https://distil-mq94.onrender.com](https://distil-mq94.onrender.com) — a
+**Live:** [https://distil-mq5q.onrender.com](https://distil-mq5q.onrender.com) — a
 compact banner on first visit with **Start walkthrough**. Dismiss it or finish the
 guide, then reopen anytime via **Evaluator guide** in the header.
 
@@ -349,15 +349,30 @@ which **Render serves its own loading page** to the browser — this happens *be
 our app is running, so no app code can replace that page. Two things reduce how often
 users hit it:
 
-1. **Keep it warm** with a scheduled ping to **`/api/ping`** (lightweight, no DB).
-   This repo ships a GitHub Actions cron at
-   [`.github/workflows/keep-alive.yml`](.github/workflows/keep-alive.yml) that pings
-   **every 10 minutes** (5-minute safety margin under the 15-minute limit). Set the
-   repo variable `KEEP_ALIVE_URL` (Settings → Secrets and variables → Actions →
-   Variables) to `https://<your-service>.onrender.com/api/ping`, or edit the default
-   in the workflow. An external monitor (UptimeRobot, Runhooks) works too — use
-   `/api/ping`, a **≤10-minute** interval, and a **90-second** timeout so a slow wake
-   isn't flagged as down.
+1. **Keep it warm** with a ping to **`/api/ping`** every **≤10 minutes** (5-minute
+   safety margin under Render’s 15-minute sleep).
+
+   > **The URL must be the LIVE service host.** Find it in the Render dashboard on
+   > the **distil** service page (shown under the service name), e.g.
+   > `https://distil-mq5q.onrender.com`. A wrong host returns **404** with header
+   > **`x-render-routing: no-server`** — this is the #1 reason a keep-alive silently
+   > "does nothing": it's pinging a hostname where no service is deployed.
+
+   **Recommended: external monitor** — [UptimeRobot](https://uptimerobot.com) or
+   [cron-job.org](https://cron-job.org): monitor
+   `https://<your-service>.onrender.com/api/ping`, interval **5–10 minutes**, timeout
+   **90 seconds**, expect **HTTP 200**. Most reliable free option; no GitHub setup.
+
+   **Secondary: GitHub Action** — [`.github/workflows/keep-alive.yml`](.github/workflows/keep-alive.yml)
+   pings on a best-effort `schedule` and via a manual **Run workflow** button. GitHub’s
+   free cron is sparse (it may skip many ticks), so treat it as a backup, not the
+   primary heartbeat. Override the URL with repo variable **`KEEP_ALIVE_URL`**
+   (Settings → Secrets and variables → Actions → Variables) so you never have to edit
+   the workflow.
+
+   > **Free-tier ceiling:** keeping one service warm ~24/7 uses most of Render’s **750
+   > free instance-hours/month**. If exhausted, Render suspends the service until the
+   > month resets — upgrade to **Starter ($7/mo, never sleeps)** if that matters.
 2. **Wake gracefully in the UI.** Once our SPA shell loads, `WakeGate`
    ([`apps/web/src/app/WakeGate.tsx`](apps/web/src/app/WakeGate.tsx)) polls `/api/ping`
    and shows a **branded "waking the server" loader** (auto-entering when the API
