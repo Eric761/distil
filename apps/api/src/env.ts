@@ -15,6 +15,11 @@ const envSchema = z.object({
     .string()
     .default("false")
     .transform((v) => v === "true"),
+  /** When true, truncate documents before seeding (one-shot rebuild on Render). */
+  SEED_RESET: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
 
   /**

@@ -2,6 +2,7 @@ import { and, count, eq } from "drizzle-orm";
 import { DEMO_SEED_DOCUMENT_COUNT } from "@invoice/fixtures";
 import { INVOICE_TYPE } from "@invoice/contracts";
 import { closeDb, getDb } from "./client.js";
+import { truncateDemoData } from "./truncate-demo-data.js";
 import { loadEnv } from "../env.js";
 import { documentRecords, documents, extractionFields, extractions, invoiceRecords, processingAttempts } from "./schema.js";
 import { NON_INVOICE_DEMOS } from "./demo-documents.js";
@@ -285,8 +286,16 @@ export async function runSeed(options?: { closeAfter?: boolean }): Promise<void>
     return;
   }
 
+  if (env.SEED_RESET) {
+    // eslint-disable-next-line no-console
+    console.log("SEED_RESET is true; truncating documents before seed...");
+    await truncateDemoData();
+    // eslint-disable-next-line no-console
+    console.log("database truncated");
+  }
+
   const existingCount = await getDocumentCount();
-  if (!env.SEED_FORCE && existingCount >= DEMO_TARGET_COUNT) {
+  if (!env.SEED_FORCE && !env.SEED_RESET && existingCount >= DEMO_TARGET_COUNT) {
     // eslint-disable-next-line no-console
     console.log(
       `seed skipped — library has ${existingCount} documents (demo target: ${DEMO_TARGET_COUNT}). Set SEED_FORCE=true to re-run.`,

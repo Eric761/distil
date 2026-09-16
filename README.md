@@ -398,12 +398,13 @@ pnpm start                        # health: GET /api/health
 ```
 
 **Render (recommended):** connect the repo and apply [`render.yaml`](render.yaml).
-The blueprint provisions Postgres (free tier), runs migrate + seed once per deploy via
-`releaseCommand`, and serves API + UI from one origin. On each wake from sleep the
-server runs a fast in-process migrate and starts listening immediately — seed does
-**not** block cold starts. Uploaded file bytes live in PostgreSQL, so redeploys do
-not erase uploads. Seed **skips** when the library already has all demo fixtures; use
-`SEED_FORCE=true` or `pnpm db:reset && pnpm db:seed` to rebuild demo state.
+The blueprint provisions Postgres (free tier) and serves API + UI from one origin.
+**Free tier does not run `preDeployCommand`**, so migrate + seed run in-process on
+each wake/deploy before the server listens. When the library already has all demo
+fixtures, seed returns immediately (one cheap count query). Uploaded file bytes live
+in PostgreSQL, so redeploys do not erase uploads. To rebuild demo state on Render,
+set **`SEED_RESET=true`** in the web service **Environment**, deploy once, confirm
+**23** documents, then **remove `SEED_RESET`** so later wakes do not wipe uploads.
 
 **Keep-alive & cold starts (free tier reality):** Render spins a Free web service
 **down after 15 minutes** with no inbound traffic. Waking it takes ~1 minute, during
@@ -453,10 +454,9 @@ users hit it:
 > a guaranteed-instant first load matters, use Render **Starter ($7/mo, never sleeps)**
 > or host the SPA as a **Render Static Site** (never sleeps) with the API on free.
 
-**First deploy on Render (free tier):** `releaseCommand` runs migrate + seed before
-the new version goes live; the first seed can take **2–5 minutes**. Render probes
-`/api/health` only after the port is open. If the deploy fails with a health-check
-error:
+**First deploy on Render (free tier):** startup runs migrate + seed before the port
+opens; the first seed can take **2–5 minutes**. Render probes `/api/health` only
+after the port is open. If the deploy fails with a health-check error:
 
 1. Open the **distil** web service → **Settings** → **Health Checks**.
 2. Confirm path is **`/api/health`** (must match `render.yaml`).

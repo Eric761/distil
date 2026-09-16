@@ -1,7 +1,7 @@
 # Render.com blueprint: one same-origin Node service + managed PostgreSQL.
 # Fastify serves /api/* and the built Vite assets from the same origin (no CORS).
 #
-# Migrate runs in-process on each wake (fast). Seed runs once per deploy via releaseCommand.
+# Migrate + seed run in-process on each wake (free tier ignores preDeployCommand).
 # Health check: /api/health (set in Dashboard if deploy times out — see README § Deployment).
 # Keep-alive: GET /api/ping every ≤10 min — see .github/workflows/keep-alive.yml and README § Deployment.
 services:
@@ -10,9 +10,8 @@ services:
     runtime: node
     plan: free
     # corepack enable fails on Render (read-only /usr/local/bin). Use npx instead.
-    buildCommand: npx --yes pnpm@10.26.2 install --frozen-lockfile && npx --yes pnpm@10.26.2 build
-    releaseCommand: npx --yes pnpm@10.26.2 run db:reset && npx --yes pnpm@10.26.2 run db:migrate && npx --yes pnpm@10.26.2 run db:seed
-    startCommand: npx --yes pnpm@10.26.2 run start
+    buildCommand: "npx --yes pnpm@10.26.2 install --frozen-lockfile && npx --yes pnpm@10.26.2 build"
+    startCommand: "npx --yes pnpm@10.26.2 run start"
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

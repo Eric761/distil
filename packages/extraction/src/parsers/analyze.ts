@@ -29,7 +29,24 @@ function splitLines(text: string): LineSpan[] {
 }
 
 const HEADING_MD = /^(#{1,6})\s+(.*\S)\s*$/u;
-const KV = /^\s*([A-Za-z][A-Za-z0-9 ./&()_-]{0,48}?)\s*[:\uFF1A]\s+(.+\S)\s*$/u;
+const KV_KEY_WORD_ALLOW = new Set([
+  "no",
+  "id",
+  "po",
+  "gstin",
+  "igst",
+  "sgst",
+  "cgst",
+  "hsn",
+  "pin",
+  "ifsc",
+  "upi",
+  "sku",
+  "qty",
+  "uom",
+  "irn",
+  "ack",
+]);
 const LIST_ITEM = /^\s*(?:[-*\u2022]|\d+[.)])\s+(.+\S)\s*$/u;
 const MULTISPACE = /\S {2,}\S|\t/u;
 
@@ -59,6 +76,93 @@ function splitCells(line: string): string[] {
     .split(/\s{2,}|\t+/u)
     .map((c) => c.trim())
     .filter((c) => c.length > 0);
+}
+
+function isLabelKey(key: string): boolean {
+  const words = key.trim().split(/\s+/u);
+  if (words.length === 0) return false;
+  return words.every(
+    (word) =>
+      /^[A-Za-z][A-Za-z.&()-]*$/u.test(word) &&
+      (word.length >= 3 || KV_KEY_WORD_ALLOW.has(word.toLowerCase())),
+  );
+}
+
+function findNextKey(
+  raw: string,
+  from: number,
+  requireAtFrom = false,
+): { key: string; keyStart: number; valueStart: number } | null {
+  let searchFrom = from;
+  while (searchFrom < raw.length) {
+    const slice = raw.slice(searchFrom);
+    const match = /^([A-Za-z][A-Za-z0-9 ./&()_-]{0,48}?)\s*[:\uFF1A]\s+/u.exec(slice);
+    if (!match) {
+      if (requireAtFrom && searchFrom === from) return null;
+      const nextSpace = raw.indexOf(" ", searchFrom + 1);
+      searchFrom = nextSpace >= 0 ? nextSpace + 1 : raw.length;
+      continue;
+    }
+
+    const key = match[1]!.trim();
+    const keyStart = searchFrom + match.index!;
+    if (!isLabelKey(key)) {
+      const nextSpace = raw.indexOf(" ", keyStart + 1);
+      searchFrom = nextSpace >= 0 ? nextSpace + 1 : raw.length;
+      continue;
+    }
+
+    if (keyStart > from) {
+      const before = raw[keyStart - 1];
+      if (before !== " " && before !== "\t") {
+        searchFrom = keyStart + 1;
+        continue;
+      }
+    }
+
+    return { key, keyStart, valueStart: keyStart + match[0].length };
+  }
+  return null;
+}
+
+/** Extract one or more key/value pairs when a line starts with `Label: value`. */
+function extractKeyValuesFromLine(
+  raw: string,
+  lineStart: number,
+  pageAt: (offset: number) => number | null,
+): KeyValue[] | null {
+  const contentStart = raw.search(/\S/u);
+  if (contentStart < 0) return null;
+
+  const first = findNextKey(raw, contentStart, true);
+  if (!first || first.keyStart !== contentStart) return null;
+
+  const pairs: KeyValue[] = [];
+  let current: { key: string; keyStart: number; valueStart: number } | null = first;
+  while (current) {
+    const next = findNextKey(raw, current.valueStart);
+    const valueEndInRaw = next?.keyStart ?? raw.length;
+
+    const valueRegion = raw.slice(current.valueStart, valueEndInRaw);
+    const value = valueRegion.trim();
+    if (value.length > 0) {
+      const leading = valueRegion.length - valueRegion.trimStart().length;
+      const valueOffsetStart = lineStart + current.valueStart + leading;
+      const valueOffsetEnd = valueOffsetStart + value.length;
+
+      pairs.push({
+        key: current.key,
+        value,
+        valueOffsetStart,
+        valueOffsetEnd,
+        page: pageAt(valueOffsetStart),
+      });
+    }
+
+    current = next;
+  }
+
+  return pairs.length > 0 ? pairs : null;
 }
 
 function looksTabular(line: string): boolean {
@@ -173,13 +277,17 @@ export function analyze(text: string, opts: AnalyzeOptions): CanonicalParse {
       continue;
     }
 
-    const kv = KV.exec(raw);
-    if (kv) {
-      const key = kv[1]!.trim();
-      const value = kv[2]!.trim();
-      const valueStart = line.start + raw.lastIndexOf(value);
-      blocks.push({ kind: "kv", text: `${key}: ${value}`, offsetStart: line.start, offsetEnd: line.end, level: null, page: pageAt(line.start) });
-      keyValues.push({ key, value, valueOffsetStart: valueStart, valueOffsetEnd: valueStart + value.length, page: pageAt(valueStart) });
+    const kvs = extractKeyValuesFromLine(raw, line.start, pageAt);
+    if (kvs) {
+      blocks.push({
+        kind: "kv",
+        text: kvs.map((kv) => `${kv.key}: ${kv.value}`).join("  "),
+        offsetStart: line.start,
+        offsetEnd: line.end,
+        level: null,
+        page: pageAt(line.start),
+      });
+      keyValues.push(...kvs);
       continue;
     }
 

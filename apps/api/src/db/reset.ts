@@ -1,11 +1,8 @@
-import { sql } from "drizzle-orm";
-import { closeDb, getDb } from "./client.js";
+import { closeDb } from "./client.js";
+import { truncateDemoData } from "./truncate-demo-data.js";
 
 async function main(): Promise<void> {
-  const db = getDb();
-  await db.execute(sql`TRUNCATE TABLE documents CASCADE`);
-  await db.execute(sql`TRUNCATE TABLE field_corrections CASCADE`);
-  await db.execute(sql`TRUNCATE TABLE document_schemas CASCADE`);
+  await truncateDemoData();
   // eslint-disable-next-line no-console
   console.log("database truncated");
   await closeDb();

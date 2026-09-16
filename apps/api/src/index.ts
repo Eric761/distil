@@ -1,14 +1,25 @@
 import { buildApp } from "./app.js";
 import { closeDb } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
+import { runSeed } from "./db/seed.js";
 import { loadEnv } from "./env.js";
 import { startWorker, stopWorker } from "./worker/processor.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
 
-  // Fast in-process migrate on wake — seed runs only via `releaseCommand` on deploy.
+  // Migrate on every wake. Seed also runs here because Render free tier ignores
+  // preDeployCommand — see README § Deployment.
   await runMigrations();
+  if (env.SEED_DEMO_DATA) {
+    if (env.SEED_RESET) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "SEED_RESET is true — documents will be wiped and re-seeded on this start. Remove SEED_RESET after deploy.",
+      );
+    }
+    await runSeed();
+  }
 
   const app = await buildApp();
 

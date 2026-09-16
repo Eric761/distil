@@ -31,6 +31,26 @@ describe("parsePlainText", () => {
 
     expect(parse.blocks.some((b) => b.kind === "heading" && b.text === "Employment Agreement")).toBe(true);
   });
+
+  it("splits multiple key/value pairs on one line (common on invoice PDFs)", () => {
+    const text =
+      "Invoice No: FLP/BLR/2425/544356 Invoice Date: 08-01-2025\n" +
+      "Seller GSTIN: 29AABCF1234Q1ZS Order ID: OD431244855\n";
+    const parse = parsePlainText(text);
+
+    const invoiceNo = parse.keyValues.find((kv) => kv.key === "Invoice No")!;
+    expect(invoiceNo.value).toBe("FLP/BLR/2425/544356");
+    expect(parse.text.slice(invoiceNo.valueOffsetStart, invoiceNo.valueOffsetEnd)).toBe("FLP/BLR/2425/544356");
+
+    const invoiceDate = parse.keyValues.find((kv) => kv.key === "Invoice Date")!;
+    expect(invoiceDate.value).toBe("08-01-2025");
+
+    const sellerGstin = parse.keyValues.find((kv) => kv.key === "Seller GSTIN")!;
+    expect(sellerGstin.value).toBe("29AABCF1234Q1ZS");
+
+    const orderId = parse.keyValues.find((kv) => kv.key === "Order ID")!;
+    expect(orderId.value).toBe("OD431244855");
+  });
 });
 
 describe("parseCsv", () => {
