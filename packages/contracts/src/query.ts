@@ -163,6 +163,7 @@ export const queryResultRow = z.object({
   summaryValues: z.array(querySummaryValue),
   reviewStatus,
   openIssues: z.number().int().min(0).nullable(),
+  updatedAt: z.string().datetime(),
   /** Provenance link for the total cell (the most-traced value). */
   totalSource: resultSourceLink.nullable(),
 });

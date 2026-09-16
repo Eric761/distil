@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
 import { makeQueryResponse, DOC_ID } from "@/test/fixtures";
+import { formatDateTime } from "@/lib/utils";
 import { server } from "@/test/msw-server";
 import { ExplorePage } from "../ExplorePage";
 
@@ -51,7 +52,8 @@ describe("ExplorePage", () => {
 
     // The result row comes from the (mocked) backend, not a frontend fixture list.
     const row = (await screen.findByText("Acme Office Supply Co.")).closest("tr")!;
-    expect(within(row).getByText("$868.00")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Updated" })).toBeInTheDocument();
+    expect(within(row).getByText(formatDateTime("2024-09-12T10:05:00.000Z"))).toBeInTheDocument();
     // Issue-count column reflects the row's openIssues (0 -> All clear).
     expect(within(row).getByText("All clear")).toBeInTheDocument();
 

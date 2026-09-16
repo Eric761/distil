@@ -55,7 +55,7 @@ function ReviewQueueRouteFallback() {
       <PageHeader
         icon={<ListChecks className="size-6" aria-hidden="true" />}
         title="Review queue"
-        description="Ranking the most consequential unverified fields across your documents."
+        description="Prioritize open issues across documents by approval impact, confidence, and materiality."
         actions={<Skeleton className="h-9 w-40" />}
       />
       <div className="space-y-3">

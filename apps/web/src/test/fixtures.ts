@@ -351,6 +351,7 @@ export function makeQueryResponse(overrides: Partial<QueryResponse> = {}): Query
         summaryValues: [],
         reviewStatus: "approved",
         openIssues: 0,
+        updatedAt: "2024-09-12T10:05:00.000Z",
         totalSource: { documentId: DOC_ID, fieldPath: "total", page: 1, hasBox: true },
       },
     ],

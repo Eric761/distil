@@ -495,6 +495,7 @@ export async function runFilters(req: QueryRequest & { filters: QueryFilters }):
       currency: currencyValue.as("selected_currency"),
       total: totalValue.as("selected_total"),
       reviewStatus: documents.reviewStatus,
+      updatedAt: documents.updatedAt,
       currentExtractionId: documents.currentExtractionId,
       selectedExtractionId: selectedExtractionId(scope).as("selected_extraction_id"),
     })
@@ -628,6 +629,7 @@ export async function runFilters(req: QueryRequest & { filters: QueryFilters }):
     summaryValues: summaryValues.get(r.documentId) ?? [],
     reviewStatus: r.reviewStatus,
     openIssues: openById.get(r.documentId) ?? null,
+    updatedAt: r.updatedAt.toISOString(),
     totalSource: r.total != null ? (sources.get(r.documentId) ?? null) : null,
   }));
 

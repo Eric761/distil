@@ -342,7 +342,7 @@ export function SchemasPage() {
       <PageHeader
         icon={<LayoutGrid className="size-6" aria-hidden="true" />}
         title="Schemas"
-        description="The reusable, versioned shapes documents are extracted against. Inferred proposals start as drafts; publish to freeze an immutable version and route future documents to it."
+        description="Manage reusable, versioned extraction schemas. Infer drafts from uploads, then publish immutable versions for future documents."
       />
 
       {isError ? (

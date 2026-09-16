@@ -20,20 +20,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn, formatMoney } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useSearchRecords } from "./api";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { FilterBuilder } from "./FilterBuilder";
+import { interpretationChipTone } from "./interpretation-chip";
 import { QueryResultsLoading } from "./QueryLoadingState";
+import { ResultSummaryChips } from "./ResultSummaryChips";
 import { ResultsTable } from "./ResultsTable";
 import { downloadTextFile, fetchAllResultRows, rowsToCsv, rowsToJson } from "./export";
-
-const EXAMPLES = [
-  "Orbital Cloud Migration",
-  "Blue Harbor Analytics",
-  "approved invoices over 1000",
-  "support tickets High priority",
-];
+import { EXPLORE_TRY_EXAMPLES } from "./explore-examples";
 
 const TRUST_SCOPE_LABELS: Record<QueryTrustScope, string> = {
   approved: "Last approved snapshots",
@@ -266,7 +262,7 @@ export function ExplorePage() {
       <PageHeader
         icon={<Compass className="size-6" aria-hidden="true" />}
         title="Explore documents"
-        description="One row per document. Ask in plain language — it becomes visible, editable filters. Approved records are searched by default."
+        description="Search approved records with plain language and visible, editable filters. Inspect data, JSON, history, and source evidence for any result."
       />
 
       <form
@@ -291,7 +287,7 @@ export function ExplorePage() {
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>Try:</span>
-        {EXAMPLES.map((ex) => (
+        {EXPLORE_TRY_EXAMPLES.map((ex) => (
           <button
             key={ex}
             className="rounded-full border border-border px-2 py-0.5 hover:bg-muted"
@@ -352,7 +348,7 @@ export function ExplorePage() {
           <div className="flex flex-wrap gap-1.5">
             {activeInterpretation.chips.length > 0 ? (
               activeInterpretation.chips.map((chip) => (
-                <Badge key={chip.key} tone="info">
+                <Badge key={chip.key} tone={interpretationChipTone(chip.key)}>
                   {chip.label}: {chip.display}
                 </Badge>
               ))
@@ -450,50 +446,16 @@ export function ExplorePage() {
         <>
           {data && data.items.length > 0 ? (
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <span className="inline-flex h-7 items-center rounded-md bg-primary/10 px-2 text-xs font-semibold text-foreground">
-                  {(data.summary?.totalCount ?? data.pagination.total).toLocaleString()}
-                  <span className="ml-1 font-normal text-muted-foreground">
-                    {(data.summary?.totalCount ?? data.pagination.total) === 1 ? "record" : "records"}
+              {data.summary ? (
+                <ResultSummaryChips summary={data.summary} />
+              ) : (
+                <Badge tone="info" className="h-7 rounded-md px-2 py-0">
+                  {data.pagination.total.toLocaleString()}
+                  <span className="font-normal opacity-80">
+                    {data.pagination.total === 1 ? "record" : "records"}
                   </span>
-                </span>
-                {data.summary && data.summary.byCurrency.length > 0 ? (
-                  <>
-                    <span className="hidden h-4 w-px bg-border sm:inline" aria-hidden="true" />
-                    {data.summary.byCurrency.map((bucket) => (
-                      <span
-                        key={bucket.currency ?? "none"}
-                        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 text-xs"
-                        title={`${bucket.currency ?? "No currency"} total`}
-                      >
-                        <span className="shrink-0 font-medium text-muted-foreground">
-                          {bucket.currency ?? "—"}
-                        </span>
-                        <span className="truncate font-semibold tabular-nums text-foreground">
-                          {formatMoney(bucket.total, bucket.currency)}
-                        </span>
-                      </span>
-                    ))}
-                  </>
-                ) : null}
-                {data.summary?.bySchema && data.summary.bySchema.length > 1 ? (
-                  <>
-                    <span className="hidden h-4 w-px bg-border sm:inline" aria-hidden="true" />
-                    {data.summary.bySchema.slice(0, 3).map((bucket) => (
-                      <span
-                        key={`${bucket.schemaKey}:${bucket.schemaName ?? ""}`}
-                        className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 text-xs"
-                        title={`${bucket.count} ${bucket.schemaName ?? bucket.schemaKey} records`}
-                      >
-                        <span className="truncate font-medium text-muted-foreground">
-                          {bucket.schemaName ?? bucket.schemaKey}
-                        </span>
-                        <span className="font-semibold tabular-nums text-foreground">{bucket.count}</span>
-                      </span>
-                    ))}
-                  </>
-                ) : null}
-              </div>
+                </Badge>
+              )}
               <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
                 <Select value={sort} onValueChange={(value) => setSort(value as QueryRequest["sort"])}>
                   <SelectTrigger

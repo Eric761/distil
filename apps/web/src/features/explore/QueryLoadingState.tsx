@@ -1,23 +1,19 @@
 import { Compass, Search, SlidersHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EXPLORE_TRY_EXAMPLES } from "./explore-examples";
 
-const TABLE_COLUMNS = ["", "Document", "Summary", "Total", "Review", "Issues", "Actions"];
-const EXAMPLE_LABELS = [
-  "invoices from Acme above 500",
-  "documents mentioning healthcare",
-  "approved invoices over 1000",
-  "support tickets with High priority",
-];
+const TABLE_COLUMNS = ["", "Document", "Summary", "Review", "Issues", "Updated", "Actions"];
 
 export function QueryResultsLoading() {
   return (
     <div className="space-y-3" aria-busy="true">
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Skeleton className="h-7 w-24 rounded-md bg-muted/80" />
-          <Skeleton className="h-7 w-28 rounded-md bg-muted/80" />
-          <Skeleton className="h-7 w-28 rounded-md bg-muted/80" />
+          <Skeleton className="h-7 w-24 rounded-full bg-primary/10" />
+          <Skeleton className="h-7 w-32 rounded-full bg-success/10" />
+          <Skeleton className="h-7 w-28 rounded-full bg-success/10" />
+          <Skeleton className="h-7 w-36 rounded-full bg-muted/80" />
         </div>
         <div className="flex items-center gap-1.5">
           <Skeleton className="h-8 w-40 rounded-md bg-muted/80" />
@@ -32,12 +28,12 @@ export function QueryResultsLoading() {
           <caption className="sr-only">Loading query results</caption>
           <colgroup>
             <col className="w-12" />
-            <col className="w-[21%]" />
+            <col className="w-[22%]" />
             <col className="w-[25%]" />
+            <col className="w-[12%]" />
             <col className="w-[10%]" />
-            <col className="w-[13%]" />
             <col className="w-[10%]" />
-            <col className="w-[17%]" />
+            <col className="w-[18%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -81,7 +77,7 @@ export function QueryRouteLoading() {
       <PageHeader
         icon={<Compass className="size-6" aria-hidden="true" />}
         title="Explore documents"
-        description="One row per document. Ask in plain language — it becomes visible, editable filters."
+        description="Search approved records with plain language and visible, editable filters. Inspect data, JSON, history, and source evidence for any result."
       />
 
       <div className="space-y-2">
@@ -101,7 +97,7 @@ export function QueryRouteLoading() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">Try:</span>
-          {EXAMPLE_LABELS.map((label) => (
+          {EXPLORE_TRY_EXAMPLES.map((label) => (
             <span
               key={label}
               className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground"

@@ -192,10 +192,12 @@ function QueueSummary({ items, totalOpenIssues, totalDocuments }: QueueSummaryPr
 }
 
 function queueDescription(data: ReviewQueueResponse | undefined): string {
-  if (!data) return "Ranking the most consequential unverified fields across your documents.";
-  if (data.totalOpenIssues === 0) return "No open issues — every document is verified.";
+  if (!data) {
+    return "Prioritize open issues across documents by approval impact, confidence, and materiality.";
+  }
+  if (data.totalOpenIssues === 0) return "No open review issues right now.";
 
-  return "Ranked by approval blockers, confidence, and materiality.";
+  return "Prioritize open issues across documents by approval impact, confidence, and materiality.";
 }
 
 export function ReviewQueuePage() {

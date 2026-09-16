@@ -73,6 +73,7 @@ describe("Explore details drawer", () => {
                 ],
                 reviewStatus: "approved",
                 openIssues: 0,
+                updatedAt: "2024-09-12T10:05:00.000Z",
                 totalSource: null,
               },
             ],

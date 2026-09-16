@@ -33,6 +33,7 @@ const CSV_COLUMNS: Array<{ header: string; get: (r: QueryResultRow) => string | 
   { header: "Total", get: (r) => r.total },
   { header: "Summary values", get: (r) => r.summaryValues.map((v) => `${v.label}: ${v.value ?? ""}`).join("; ") },
   { header: "Review status", get: (r) => r.reviewStatus },
+  { header: "Updated", get: (r) => r.updatedAt },
   { header: "Open issues", get: (r) => r.openIssues },
   { header: "Document ID", get: (r) => r.documentId },
 ];

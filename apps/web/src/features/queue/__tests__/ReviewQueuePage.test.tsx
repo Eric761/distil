@@ -14,9 +14,8 @@ describe("ReviewQueuePage", () => {
 
     renderWithProviders(<ReviewQueuePage />, { route: "/review-queue", path: "*" });
 
-    // Header explains prioritization; the summary owns the numeric workload.
-    expect(await screen.findByText(/ranked by approval blockers/i)).toBeInTheDocument();
-    const summary = screen.getByLabelText(/review queue summary/i);
+    const summary = await screen.findByLabelText(/review queue summary/i);
+    expect(screen.getByText(/prioritize open issues/i)).toBeInTheDocument();
     expect(within(summary).getByText("Open issues")).toBeInTheDocument();
     expect(within(summary).getByText("Documents affected")).toBeInTheDocument();
     expect(within(summary).getByText(/Northstar Logistics · Total/i)).toBeInTheDocument();
@@ -76,7 +75,7 @@ describe("ReviewQueuePage", () => {
 
     renderWithProviders(<ReviewQueuePage />, { route: "/review-queue", path: "*" });
     expect(await screen.findByText(/You're all caught up/i)).toBeInTheDocument();
-    expect(screen.getByText(/every document is verified/i)).toBeInTheDocument();
+    expect(screen.getByText(/no open review issues right now/i)).toBeInTheDocument();
   });
 
   it("offers a retry when the queue fails to load", async () => {

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReviewStatusBadge } from "@/components/status-indicators";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatMoney } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 const FORMAT_LABELS: Record<QueryResultRow["documentFormat"], string> = {
   pdf: "PDF",
@@ -90,12 +90,12 @@ export function ResultsTable({
         <caption className="sr-only">Query results — one row per document</caption>
         <colgroup>
           <col className="w-12" />
-          <col className="w-[21%]" />
+          <col className="w-[22%]" />
           <col className="w-[25%]" />
+          <col className="w-[12%]" />
           <col className="w-[10%]" />
-          <col className="w-[13%]" />
           <col className="w-[10%]" />
-          <col className="w-[17%]" />
+          <col className="w-[18%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -111,9 +111,9 @@ export function ResultsTable({
             </th>
             <th scope="col" className="px-4 py-2.5 font-medium">Document</th>
             <th scope="col" className="px-4 py-2.5 font-medium">Summary</th>
-            <th scope="col" className="px-4 py-2.5 text-right font-medium">Total</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Review</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Issues</th>
+            <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Updated</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Actions</th>
           </tr>
         </thead>
@@ -160,11 +160,9 @@ export function ResultsTable({
                     </div>
                   </td>
                   <td className="px-4 py-3"><SummaryCell row={row} /></td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">
-                    {row.total != null ? formatMoney(row.total, row.currency) : <span className="font-normal text-muted-foreground">—</span>}
-                  </td>
                   <td className="whitespace-nowrap px-4 py-3"><ReviewStatusBadge status={row.reviewStatus} compact /></td>
                   <td className="whitespace-nowrap px-4 py-3"><IssuesCell open={row.openIssues} /></td>
+                  <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDateTime(row.updatedAt)}</td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <Button

@@ -194,7 +194,7 @@ export function DocumentsPage() {
       <PageHeader
         icon={<FileStack className="size-6" aria-hidden="true" />}
         title="Documents"
-        description="Verify extraction, resolve blockers, and approve trusted records."
+        description="Upload supported files, track schema-driven extraction, resolve review issues, and approve trusted records."
         descriptionClassName="max-w-none"
         actions={
           <>
