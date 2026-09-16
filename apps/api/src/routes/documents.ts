@@ -6,14 +6,17 @@ import {
   saveExtractionRequest,
   ERROR_CODES,
 } from "@invoice/contracts";
+import { detectFormat } from "@invoice/extraction";
 import { AppError, badRequest, notFound } from "../lib/errors.js";
 import {
   getDocumentContent,
   getDocumentDetail,
+  getDocumentParse,
   ingestSample,
   ingestUpload,
   listDocuments,
 } from "../services/document-service.js";
+import { getDocumentHistory } from "../services/history-service.js";
 import { enqueueProcessing } from "../services/processing-service.js";
 import { getSamples } from "../services/profiles.js";
 import {
@@ -43,27 +46,18 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
     const file = await request.file();
     if (!file) throw badRequest("No file was uploaded.");
 
-    const filename = file.filename.toLowerCase();
-    if (!filename.endsWith(".pdf")) {
-      await file.toBuffer().catch(() => undefined);
-      throw new AppError({
-        code: ERROR_CODES.UNSUPPORTED_FILE,
-        status: 400,
-        title: "Unsupported file",
-        detail: "Only PDF files (.pdf) are supported.",
-      });
-    }
-
+    // Accept the supported document family (PDF, TXT, Markdown, CSV, HTML) by
+    // filename or MIME. octet-stream is tolerated when the extension resolves.
     const mime = file.mimetype.toLowerCase();
-    const mimeAllowed =
-      mime === "application/pdf" || mime === "application/octet-stream" || mime === "binary/octet-stream";
-    if (mime && !mimeAllowed) {
+    const resolvableMime =
+      mime === "application/octet-stream" || mime === "binary/octet-stream" ? undefined : mime;
+    if (!detectFormat(file.filename, resolvableMime)) {
       await file.toBuffer().catch(() => undefined);
       throw new AppError({
         code: ERROR_CODES.UNSUPPORTED_FILE,
         status: 400,
         title: "Unsupported file",
-        detail: "Only PDF files (.pdf) are supported.",
+        detail: "Supported document types: PDF, TXT, Markdown, CSV, HTML.",
       });
     }
 
@@ -123,20 +117,40 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get<{ Params: { id: string } }>("/api/documents/:id/content", async (request, reply) => {
-    const { filename, bytes } = await getDocumentContent(assertUuid(request.params.id));
+    const { filename, mimeType, bytes } = await getDocumentContent(assertUuid(request.params.id));
     const safeName = filename.replace(/[^\w.\-]+/gu, "_");
+    const isPdf = mimeType.toLowerCase().includes("pdf") || filename.toLowerCase().endsWith(".pdf");
+    // PDFs render inline in the pdf.js viewer. Everything else (including HTML)
+    // is served as a download with a neutral content type so untrusted markup
+    // is never executed as same-origin content.
+    if (isPdf) {
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `inline; filename="${safeName}"`)
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Cache-Control", "private, max-age=300")
+        .send(bytes);
+    }
     return reply
-      .header("Content-Type", "application/pdf")
-      .header("Content-Disposition", `inline; filename="${safeName}"`)
+      .header("Content-Type", "application/octet-stream")
+      .header("Content-Disposition", `attachment; filename="${safeName}"`)
       .header("X-Content-Type-Options", "nosniff")
       .header("Cache-Control", "private, max-age=300")
       .send(bytes);
   });
 
+  app.get<{ Params: { id: string } }>("/api/documents/:id/parse", async (request) => {
+    return getDocumentParse(assertUuid(request.params.id));
+  });
+
+  app.get<{ Params: { id: string } }>("/api/documents/:id/history", async (request) => {
+    return getDocumentHistory(assertUuid(request.params.id));
+  });
+
   app.post<{ Params: { id: string } }>("/api/documents/:id/process", async (request, reply) => {
     const id = assertUuid(request.params.id);
     const body = processRequest.parse(request.body ?? {});
-    await enqueueProcessing(id, body.retry ?? false);
+    await enqueueProcessing(id, body);
     const detail = await getDocumentDetail(id);
     if (!detail.latestAttempt) throw notFound("No processing attempt found.");
     return reply.status(202).send({

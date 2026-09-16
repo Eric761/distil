@@ -8,6 +8,41 @@
       "when": 1788626593467,
       "tag": "0000_aspiring_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789338665206,
+      "tag": "0001_document_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789343280000,
+      "tag": "0002_processing_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789352520000,
+      "tag": "0003_schema_version_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789353540000,
+      "tag": "0004_backfill_extraction_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789513200000,
+      "tag": "0005_generic_record_snapshots",
+      "breakpoints": true
     }
   ]
 }

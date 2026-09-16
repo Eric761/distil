@@ -28,10 +28,10 @@ export function DemoWalkthroughBanner({
               id="demo-walkthrough-banner-title"
               className="text-[15px] font-semibold leading-snug tracking-tight text-foreground"
             >
-              See review → approve → query in action
+              Review → approve → explore in action
             </h2>
             <p className="truncate text-[13px] leading-snug text-muted-foreground">
-              Covers failed extractions, open issues, and approvals — nothing to upload
+              Resolve blockers, approve trusted records, and explore the results — nothing to upload
             </p>
           </div>
         </div>

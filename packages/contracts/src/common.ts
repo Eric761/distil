@@ -53,9 +53,33 @@ export const isoDate = z
  */
 export const rawDate = z.string();
 
-/** Document type. MVP only parses invoices/vendor bills. */
-export const documentType = z.enum(["invoice"]);
+/**
+ * Document type. Distil is a general document-intelligence platform: the type
+ * is an open, stable string that identifies the logical document family (e.g.
+ * "invoice", "receipt", "contract", "resume") or the generic fallback
+ * "document" for as-yet-unclassified inputs. "invoice" retains its trusted,
+ * projection-backed behavior for backward compatibility.
+ */
+export const documentType = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/u, "Must be a lowercase slug");
 export type DocumentType = z.infer<typeof documentType>;
+
+/** The built-in, projection-backed invoice type. */
+export const INVOICE_TYPE = "invoice" as const;
+/** Generic fallback for unclassified documents. */
+export const GENERIC_DOCUMENT_TYPE = "document" as const;
+
+/**
+ * How the source document is rendered for provenance. PDFs use the pdf.js
+ * canvas viewer with page boxes; text-native formats use the safe TextViewer
+ * driven by character offsets.
+ */
+export const sourceKind = z.enum(["pdf", "text"]);
+export type SourceKind = z.infer<typeof sourceKind>;
 
 /**
  * Processing status: where the async extraction pipeline is.
@@ -139,14 +163,55 @@ export type ReviewFieldState = z.infer<typeof reviewFieldState>;
 /** Field value primitive type. */
 export const fieldType = z.enum([
   "string",
+  "text", // long free text (multi-line)
+  "integer",
   "decimal",
   "date",
+  "datetime",
+  "boolean",
   "currency",
   "enum",
   "object",
   "array",
 ]);
 export type FieldType = z.infer<typeof fieldType>;
+
+/**
+ * Structural role of a schema node / field instance.
+ *  - scalar: a single leaf value
+ *  - object: a nested group of fields
+ *  - array:  a repeated collection (of scalars or objects)
+ */
+export const nodeKind = z.enum(["scalar", "object", "array"]);
+export type NodeKind = z.infer<typeof nodeKind>;
+
+/**
+ * Explicit presence state of an extracted value. These are deliberately
+ * distinct from a null value or an empty string: a document can be missing a
+ * field, mark it not applicable, or contain text that could not be read.
+ */
+export const presenceState = z.enum([
+  "present",
+  "empty", // present in the document but explicitly blank
+  "not_found",
+  "not_applicable",
+  "unreadable",
+  "parse_error",
+  "extraction_error",
+  "ambiguous",
+]);
+export type PresenceState = z.infer<typeof presenceState>;
+
+/** Where a value came from: extracted verbatim, inferred, or derived/computed. */
+export const valueOrigin = z.enum(["extracted", "inferred", "derived"]);
+export type ValueOrigin = z.infer<typeof valueOrigin>;
+
+/**
+ * Whether a source citation could be resolved back to the canonical parsed
+ * text. Ungrounded quotes remain visible with their exact text and reason.
+ */
+export const groundingStatus = z.enum(["grounded", "unresolved", "none"]);
+export type GroundingStatus = z.infer<typeof groundingStatus>;
 
 export const pagination = z.object({
   page: z.number().int().min(1),

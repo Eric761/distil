@@ -8,6 +8,7 @@ import {
   processingStatus,
   reviewStatus,
 } from "./common.js";
+import { documentFormat } from "./documents.js";
 
 /**
  * Canonical, allowlisted query filters. These are the *source of truth* for a
@@ -32,7 +33,23 @@ export const dateFilter = z.object({
 });
 export type DateFilter = z.infer<typeof dateFilter>;
 
+/**
+ * A typed field filter over the schema-declared, indexed extraction fields.
+ * `path` is a stable schema-field key (e.g. "/candidate/name"); the server
+ * only accepts fields the schema actually declares — never arbitrary columns.
+ */
+export const fieldFilter = z.object({
+  path: z.string().min(1).max(200),
+  op: z.enum(["eq", "contains", "gt", "gte", "lt", "lte", "exists"]),
+  value: z.string().max(400).optional(),
+});
+export type FieldFilter = z.infer<typeof fieldFilter>;
+
 export const queryFilters = z.object({
+  /** Global full-text search across filename and canonical content. */
+  search: z.string().trim().min(1).max(200).optional(),
+  /** Restrict to a schema family (Explore single-schema view). */
+  schemaKey: z.string().trim().min(1).max(64).optional(),
   vendor: z.string().trim().min(1).max(200).optional(),
   amount: amountFilter.optional(),
   currency: currencyCode.optional(),
@@ -41,6 +58,8 @@ export const queryFilters = z.object({
   reviewStatus: z.array(reviewStatus).optional(),
   processingStatus: z.array(processingStatus).optional(),
   documentType: documentType.optional(),
+  /** Schema-scoped typed field predicates over indexed extraction fields. */
+  fields: z.array(fieldFilter).optional(),
 });
 export type QueryFilters = z.infer<typeof queryFilters>;
 
@@ -48,9 +67,15 @@ export const querySort = z.enum([
   "total",
   "invoiceDate",
   "vendorName",
+  "filename",
+  "schemaName",
   "approvedAt",
+  "updatedAt",
 ]);
 export type QuerySort = z.infer<typeof querySort>;
+
+export const queryTrustScope = z.enum(["approved", "current"]);
+export type QueryTrustScope = z.infer<typeof queryTrustScope>;
 
 export const queryRequest = z.object({
   /** Optional natural-language text to interpret into filters. */
@@ -61,6 +86,8 @@ export const queryRequest = z.object({
   pageSize: z.number().int().min(1).max(50).default(20),
   sort: querySort.default("approvedAt"),
   direction: z.enum(["asc", "desc"]).default("desc"),
+  /** Default trust scope: read approved snapshots; opt in to current values. */
+  trustScope: queryTrustScope.default("approved"),
   /** User has seen and accepted interpretation warnings. */
   acknowledgeWarnings: z.boolean().optional(),
 });
@@ -69,6 +96,8 @@ export type QueryRequest = z.infer<typeof queryRequest>;
 /** A single interpreted filter chip, shown to the user as editable. */
 export const interpretedChip = z.object({
   key: z.enum([
+    "search",
+    "schemaKey",
     "vendor",
     "amount",
     "currency",
@@ -77,6 +106,7 @@ export const interpretedChip = z.object({
     "reviewStatus",
     "processingStatus",
     "documentType",
+    "fields",
   ]),
   label: z.string(),
   /** Human summary, e.g. "Amount > 10,000". */
@@ -108,13 +138,29 @@ export const resultSourceLink = z.object({
 });
 export type ResultSourceLink = z.infer<typeof resultSourceLink>;
 
+export const querySummaryValue = z.object({
+  key: z.string(),
+  label: z.string(),
+  value: z.string().nullable(),
+  /** Best source link for this displayed value, when available. */
+  source: resultSourceLink.nullable().optional(),
+});
+export type QuerySummaryValue = z.infer<typeof querySummaryValue>;
+
 export const queryResultRow = z.object({
   documentId: z.string().uuid(),
+  originalFilename: z.string(),
+  documentType: z.string(),
+  documentFormat,
+  schemaName: z.string().nullable(),
+  /** Invoice preview fields (null for non-invoice documents). */
   vendorName: z.string().nullable(),
   invoiceNumber: z.string().nullable(),
   invoiceDate: isoDate.nullable(),
   currency: currencyCode.nullable(),
   total: decimalString.nullable(),
+  /** Generic schema-declared summary values (non-invoice documents). */
+  summaryValues: z.array(querySummaryValue),
   reviewStatus,
   openIssues: z.number().int().min(0).nullable(),
   /** Provenance link for the total cell (the most-traced value). */
@@ -137,6 +183,15 @@ export type QuerySummaryBucket = z.infer<typeof querySummaryBucket>;
 export const querySummary = z.object({
   totalCount: z.number().int().min(0),
   byCurrency: z.array(querySummaryBucket),
+  bySchema: z
+    .array(
+      z.object({
+        schemaKey: z.string(),
+        schemaName: z.string().nullable(),
+        count: z.number().int().min(0),
+      }),
+    )
+    .optional(),
 });
 export type QuerySummary = z.infer<typeof querySummary>;
 

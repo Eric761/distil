@@ -56,7 +56,7 @@ export function DocumentsToolbar({
           <Input
             id="doc-search"
             value={search}
-            placeholder="Filename or vendor"
+            placeholder="Filename or summary"
             className="pl-8"
             onChange={(e) => setSearch(e.target.value)}
           />

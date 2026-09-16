@@ -17,7 +17,7 @@ export const SelectTrigger = React.forwardRef<
       "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-sm",
       "transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       "disabled:cursor-not-allowed disabled:opacity-50",
-      "data-[placeholder]:text-muted-foreground [&>span]:line-clamp-1 [&>span]:flex [&>span]:items-center [&>span]:gap-2",
+      "data-[placeholder]:text-muted-foreground [&>span]:min-w-0 [&>span]:flex-1 [&>span]:truncate [&>span]:whitespace-nowrap [&>span]:text-left",
       className,
     )}
     {...props}

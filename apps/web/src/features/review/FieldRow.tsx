@@ -34,6 +34,44 @@ interface Props {
   onRevert: () => void;
 }
 
+/**
+ * Older extractions grounded table cells to the entire table. Narrow those
+ * immutable legacy references to the selected row/value in the viewer.
+ */
+function narrowLegacyTableSource(
+  field: ExtractionField,
+  source: ExtractionField["sourceReferences"][number],
+) {
+  const rowMatch = /\[(\d+)\]/u.exec(field.path);
+  const value = field.extractedValue == null ? "" : String(field.extractedValue);
+  if (
+    !rowMatch ||
+    !value ||
+    source.offsetStart == null ||
+    source.offsetEnd == null ||
+    source.sourceText.length <= value.length
+  ) {
+    return source;
+  }
+
+  const lines = source.sourceText.split("\n");
+  const rowLineIndex = Number(rowMatch[1]) + 1; // table header occupies line 0
+  const line = lines[rowLineIndex];
+  const valueIndex = line?.indexOf(value) ?? -1;
+  if (line === undefined || valueIndex < 0) return source;
+
+  const precedingLength = lines
+    .slice(0, rowLineIndex)
+    .reduce((total, current) => total + current.length + 1, 0);
+  const offsetStart = source.offsetStart + precedingLength + valueIndex;
+  return {
+    ...source,
+    offsetStart,
+    offsetEnd: offsetStart + value.length,
+    sourceText: value,
+  };
+}
+
 export const FieldRow = React.forwardRef<HTMLDivElement, Props>(function FieldRow(
   { field, entry, onConfirm, onCorrect, onNotApplicable, onResolveConflict, onRevert },
   ref,
@@ -56,11 +94,14 @@ export const FieldRow = React.forwardRef<HTMLDivElement, Props>(function FieldRo
 
   const showSource = () => {
     if (!primarySource) return;
+    const source = narrowLegacyTableSource(field, primarySource);
     focus({
       fieldId: field.id,
-      page: primarySource.page,
-      box: primarySource.box,
-      text: primarySource.sourceText,
+      page: source.page,
+      box: source.box,
+      offsetStart: source.offsetStart,
+      offsetEnd: source.offsetEnd,
+      text: source.sourceText,
       label: field.label,
     });
   };
@@ -145,7 +186,16 @@ export const FieldRow = React.forwardRef<HTMLDivElement, Props>(function FieldRo
                   onClick={() => onResolveConflict(cand.id, cand.value === null ? "" : String(cand.value))}
                   onMouseEnter={() => {
                     const ref = field.sourceReferences.find((r) => r.id === cand.sourceReferenceId);
-                    if (ref) focus({ fieldId: field.id, page: ref.page, box: ref.box, text: ref.sourceText, label: field.label });
+                    if (ref)
+                      focus({
+                        fieldId: field.id,
+                        page: ref.page,
+                        box: ref.box,
+                        offsetStart: ref.offsetStart,
+                        offsetEnd: ref.offsetEnd,
+                        text: ref.sourceText,
+                        label: field.label,
+                      });
                   }}
                 >
                   {selected ? <Check className="size-4" aria-hidden="true" /> : null}

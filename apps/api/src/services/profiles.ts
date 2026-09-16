@@ -1,5 +1,6 @@
 import { buildFixtures, type ResolvedProfile } from "@invoice/fixtures";
 import type { SampleDescriptor } from "@invoice/contracts";
+import { NON_INVOICE_DEMOS } from "../db/demo-documents.js";
 
 let cache: ResolvedProfile[] | null = null;
 
@@ -22,11 +23,20 @@ export async function getProfileByFixtureId(fixtureId: string): Promise<Resolved
 
 export async function getSamples(): Promise<SampleDescriptor[]> {
   const profiles = await getProfiles();
-  return profiles.map((p) => ({
-    fixtureId: p.fixtureId,
-    title: p.descriptor.title,
-    vendorName: p.descriptor.vendorName,
-    scenario: p.descriptor.scenario,
-    demonstrates: p.descriptor.demonstrates,
-  }));
+  return [
+    ...NON_INVOICE_DEMOS.map((demo) => ({
+      fixtureId: demo.id,
+      title: demo.title,
+      vendorName: "Generic document",
+      scenario: demo.scenario,
+      demonstrates: demo.demonstrates,
+    })),
+    ...profiles.map((p) => ({
+      fixtureId: p.fixtureId,
+      title: p.descriptor.title,
+      vendorName: p.descriptor.vendorName,
+      scenario: p.descriptor.scenario,
+      demonstrates: p.descriptor.demonstrates,
+    })),
+  ];
 }

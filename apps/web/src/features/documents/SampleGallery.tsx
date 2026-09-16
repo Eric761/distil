@@ -15,11 +15,11 @@ export function SampleGallery() {
     return <p className="text-sm text-muted-foreground">Loading samples…</p>;
   }
   if (samples.isError || !samples.data) {
-    return <p className="text-sm text-destructive">Could not load sample invoices.</p>;
+    return <p className="text-sm text-destructive">Could not load sample documents.</p>;
   }
 
   return (
-    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Sample invoices">
+    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Sample documents">
       {samples.data.samples.map((sample) => {
         const pending = ingest.isPending && ingest.variables === sample.fixtureId;
         return (

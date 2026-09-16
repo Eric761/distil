@@ -376,3 +376,44 @@ the backend deliberately small.
   migration/seed checks, and deterministic fixtures cover the rest.
 - **Tradeoff:** Broad server route coverage and cross-browser behavior stay unguarded.
 - **Cut:** E2E automation and a full DB-integration route suite.
+
+---
+
+## 2026-09-14 — Document Intelligence Supersedes Invoice-Only Scope
+
+This section supersedes the earlier invoice-first scope decision while preserving it
+as historical context. Distil is now a general document-intelligence platform:
+ingest documents, parse them into canonical content, classify them, infer or reuse a
+versioned schema, extract values with provenance, validate with declared rules,
+review and approve records, then explore trusted data.
+
+> **Chose:** Generalize the trust loop while preserving the 29-invoice demo behavior,
+> `invoice_records` projection, and invoice reconciliation workflow.
+
+- **Hybrid extraction:** Processing runs through FixtureExtractor for known demo
+  documents, an optional gated OpenAI LlmExtractor, and deterministic
+  StructuralExtractor. Fixtures never call OpenAI; unset `OPENAI_API_KEY` disables
+  LLM calls entirely; high-coverage structural results can skip OpenAI.
+- **Supported formats:** Text-layer PDF, TXT, Markdown, CSV, and HTML are parsed into
+  canonical content. Image-only PDFs are out of scope and fail with an OCR-required
+  error instead of pretending extraction succeeded.
+- **Schema lifecycle:** Schemas can be inferred immediately, reviewed and edited as a
+  draft proposal, then optionally published for reuse. Published schema versions are
+  immutable, and new generic uploads conservatively match published schemas by
+  field-overlap before falling back to a fresh ad-hoc draft.
+- **Generic value storage:** Generalized values extend `extraction_fields` with typed
+  storage and indexes rather than adding a separate `document_values` table. Approved
+  non-invoice documents also write a compact `document_records` snapshot so the
+  trusted generic record contract is explicit alongside `invoice_records`.
+- **Explore surface:** Explore replaces Query as the primary cross-document analysis
+  surface; `/query` redirects to `/explore` for compatibility. Generic natural
+  language that does not map to invoice filters becomes a visible Search chip.
+- **Declared validation rules:** Invoice reconciliation remains, but now as a declared
+  schema rule in the rule registry rather than invoice-only hard-coded behavior.
+  Generic schemas use allowlisted structural rules such as date ordering and repeated
+  record completeness; invoice reconciliation never runs for them.
+- **Lineage and approval:** Extraction writes append-only lineage, and approved records
+  retain a last-approved snapshot for traceability.
+- **Optimistic concurrency:** Review saves and approvals carry
+  `expectedExtractionId` plus `expectedVersion` so stale clients cannot overwrite a
+  newer extraction or correction batch.

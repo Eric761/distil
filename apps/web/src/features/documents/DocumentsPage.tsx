@@ -225,11 +225,11 @@ export function DocumentsPage() {
               <div className="rounded-full bg-primary/10 p-3">
                 <FileStack className="size-6 text-primary" aria-hidden="true" />
               </div>
-              <h2 className="text-lg font-semibold">Start with a sample invoice</h2>
+              <h2 className="text-lg font-semibold">Start with a sample document</h2>
               <p className="max-w-prose text-sm text-muted-foreground">
                 Each sample demonstrates a real extraction challenge — clean data, different terminology,
-                a missing field, conflicting totals, nested line items, or a recoverable failure. Load one
-                to see the full review-to-query flow, or use Upload above for your own PDF.
+                a missing field, conflicting totals, nested records, or a recoverable failure. Load one
+                to see the full review → approve → explore flow, or use Upload above for your own file.
               </p>
             </div>
             <SampleGallery />

@@ -1,11 +1,10 @@
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { PageHeader } from "@/components/ui/page-header";
 import { ProcessingStatusBadge, ReviewStatusBadge } from "@/components/status-indicators";
 import { ApiError } from "@/lib/api-client";
-import { formatMoney } from "@/lib/utils";
 import { useDocumentDetail } from "@/features/documents/api";
 import { useExtraction } from "./api";
 import { ProcessingPanel } from "./ProcessingPanel";
@@ -17,28 +16,30 @@ export function ReviewPage() {
   const [sp] = useSearchParams();
   const location = useLocation();
   const from = sp.get("from");
-  const fromQuery = from === "query";
+  // "query" is the legacy value; "explore" is current. Treat both the same.
+  const fromExplore = from === "explore" || from === "query";
   const fromQueue = from === "queue";
   const focusField = sp.get("focusField") ?? undefined;
 
   const detail = useDocumentDetail(documentId, { poll: true });
   const hasExtraction = detail.data?.hasExtraction ?? false;
   const extraction = useExtraction(documentId, hasExtraction);
+  const currentExtractionId = detail.data?.currentExtractionId ?? null;
+  const cachedExtractionId = extraction.data?.extractionId ?? null;
+
+  useEffect(() => {
+    if (!currentExtractionId || !cachedExtractionId) return;
+    if (cachedExtractionId === currentExtractionId) return;
+    if (extraction.isFetching) return;
+    void extraction.refetch();
+  }, [cachedExtractionId, currentExtractionId, extraction.isFetching, extraction.refetch]);
 
   const querySearch = (location.state as { querySearch?: string } | null)?.querySearch ?? "";
-  const backLink = fromQuery ? `/query${querySearch}` : fromQueue ? "/review-queue" : "/documents";
-  const backLabel = fromQuery ? "Back to query" : fromQueue ? "Back to review queue" : "Back to documents";
+  const backLink = fromExplore ? `/explore${querySearch}` : fromQueue ? "/review-queue" : "/documents";
+  const backLabel = fromExplore ? "Back to explore" : fromQueue ? "Back to review queue" : "Back to documents";
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6">
-      <div>
-        <Button asChild variant="ghost" size="sm">
-          <Link to={backLink}>
-            <ArrowLeft className="size-4" aria-hidden="true" /> {backLabel}
-          </Link>
-        </Button>
-      </div>
-
+    <div className="mx-auto max-w-7xl space-y-3 p-3 sm:p-4">
       {detail.isLoading ? (
         <ReviewPageLoading />
       ) : detail.isError ? (
@@ -58,26 +59,25 @@ export function ReviewPage() {
         </Card>
       ) : detail.data ? (
         <>
-          <PageHeader
-            title={detail.data.summary.originalFilename}
-            description={
-              <>
-                {detail.data.summary.vendorName ?? "Vendor pending"} ·{" "}
-                <span className="tabular-nums">
-                  {formatMoney(detail.data.summary.total, detail.data.summary.currency)}
-                </span>
-              </>
-            }
-            actions={
-              <>
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button asChild variant="ghost" size="icon" className="size-8 shrink-0" aria-label={backLabel}>
+                <Link to={backLink}>
+                  <ArrowLeft className="size-4" aria-hidden="true" />
+                </Link>
+              </Button>
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {detail.data.summary.originalFilename}
+              </h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
                 <ProcessingStatusBadge
                   status={detail.data.summary.processingStatus}
                   phase={detail.data.summary.processingPhase}
                 />
                 <ReviewStatusBadge status={detail.data.summary.reviewStatus} />
-              </>
-            }
-          />
+            </div>
+          </header>
 
           {!hasExtraction ? (
             <ProcessingPanel detail={detail.data} />

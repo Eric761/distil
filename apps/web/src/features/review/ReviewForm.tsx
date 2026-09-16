@@ -1,9 +1,18 @@
 import * as React from "react";
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Save } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Save,
+} from "lucide-react";
 import type { ExtractionDetail, ExtractionField, ReviewStatus } from "@invoice/contracts";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -17,16 +26,13 @@ import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/query-keys";
 import { FieldRow } from "./FieldRow";
-import { LineItemsEditor } from "./LineItemsEditor";
+import { RecordTableEditor } from "./RecordTableEditor";
+import { SchemaReviewControls } from "./SchemaReviewControls";
+import { deriveFields, groupScalarSections, sectionLabel } from "./records";
 import { projectField, useReviewDraft } from "./useReviewDraft";
 import { useApprove, useSaveExtraction } from "./api";
 
-const GROUP_LABELS: Record<string, string> = {
-  identity: "Identity",
-  dates: "Dates and terms",
-  amounts: "Amounts",
-  metadata: "Metadata",
-};
+type ViewMode = "attention" | "all" | "json";
 
 export function ReviewForm({
   documentId,
@@ -46,6 +52,7 @@ export function ReviewForm({
   const [issueIndex, setIssueIndex] = React.useState(0);
   const [showApprove, setShowApprove] = React.useState(false);
   const [staleConflict, setStaleConflict] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<ViewMode>("all");
 
   // Warn before leaving with unsaved changes: browser unload (tab close/reload)…
   React.useEffect(() => {
@@ -66,13 +73,12 @@ export function ReviewForm({
   );
   const blocker = useBlocker(shouldBlock);
 
-  const lineItemFields = detail.lineItems.flatMap((li) => [
-    li.fields.description,
-    li.fields.quantity,
-    li.fields.unitPrice,
-    li.fields.lineTotal,
-  ]);
-  const allFields: ExtractionField[] = [...detail.fields, ...lineItemFields];
+  const derived = React.useMemo(() => deriveFields(detail.fields, detail.schema), [detail.fields, detail.schema]);
+  const scalarSections = React.useMemo(
+    () => groupScalarSections(derived.scalarFields, detail.schema),
+    [derived.scalarFields, detail.schema],
+  );
+  const allFields: ExtractionField[] = detail.fields;
 
   const openIssues = allFields.filter((f) => !projectField(f, draft.draft[f.id]).resolvedLocally);
 
@@ -106,7 +112,7 @@ export function ReviewForm({
   const handleSave = () => {
     if (!draft.dirty) return;
     save.mutate(
-      { expectedVersion: detail.version, changes: draft.toChanges() },
+      { expectedExtractionId: detail.extractionId, expectedVersion: detail.version, changes: draft.toChanges() },
       {
         onSuccess: (updated) => {
           draft.reset();
@@ -133,7 +139,7 @@ export function ReviewForm({
 
   const handleApprove = () => {
     approve.mutate(
-      { expectedVersion: detail.version },
+      { expectedExtractionId: detail.extractionId, expectedVersion: detail.version },
       {
         onSuccess: () => {
           setShowApprove(false);
@@ -152,11 +158,6 @@ export function ReviewForm({
       },
     );
   };
-
-  const grouped = (["identity", "dates", "amounts", "metadata"] as const).map((group) => ({
-    group,
-    fields: detail.fields.filter((f) => f.group === group),
-  }));
 
   const correctionCount = Object.values(draft.draft).filter(
     (e) => e.action === "correct" || e.action === "resolve_conflict",
@@ -178,43 +179,47 @@ export function ReviewForm({
     <div className="flex h-full flex-col">
       {/* Sticky progress + actions header */}
       <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
-        <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-medium tabular-nums">{progressSummary}</span>
-          {openIssues.length > 0 ? (
-            <span className="text-muted-foreground">· {openIssues.length} open now</span>
-          ) : isComplete ? (
-            <span className="inline-flex items-center gap-1 text-success">
-              <CheckCircle2 className="size-4" aria-hidden="true" /> All clear
+        <div className="flex items-center justify-between gap-3 p-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-full",
+                isComplete ? "bg-success/10 text-success" : "bg-amber-100 text-amber-700",
+              )}
+            >
+              {isComplete ? (
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+              ) : (
+                <AlertCircle className="size-4" aria-hidden="true" />
+              )}
             </span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">Review progress</p>
+              <p className="truncate text-sm font-semibold tabular-nums">
+                {progressSummary}
+                {openIssues.length > 0 ? (
+                  <span className="font-normal text-muted-foreground"> · {openIssues.length} open</span>
+                ) : (
+                  <span className="font-normal text-success"> · All clear</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
           <Button
-            variant="outline"
             size="sm"
-            disabled={openIssues.length === 0}
-            onClick={() => goToIssue(issueIndex - 1)}
+            variant="subtle"
+            disabled={!draft.dirty || save.isPending}
+            onClick={handleSave}
           >
-            <ArrowLeft className="size-4" aria-hidden="true" /> Prev
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={openIssues.length === 0}
-            onClick={() => goToIssue(issueIndex + 1)}
-            aria-label={openIssues.length ? `Next issue, ${(issueIndex % openIssues.length) + 1} of ${openIssues.length}` : "Next issue"}
-          >
-            Next issue <ArrowRight className="size-4" aria-hidden="true" />
-          </Button>
-          <Button size="sm" variant="subtle" disabled={!draft.dirty || save.isPending} onClick={handleSave}>
             <Save className="size-4" aria-hidden="true" /> {save.isPending ? "Saving…" : "Save"}
           </Button>
           <Button size="sm" disabled={!canApprove || approve.isPending} onClick={() => setShowApprove(true)}>
             Approve
           </Button>
+          </div>
         </div>
-        </div>
+
         {/* Slim progress track: how much of the attention work is resolved. */}
         <div
           className="h-1 w-full bg-muted"
@@ -228,6 +233,69 @@ export function ReviewForm({
             className={cn("h-full transition-all duration-500", isComplete ? "bg-success" : "bg-primary")}
             style={{ width: `${progressPct}%` }}
           />
+        </div>
+
+        <div className="border-t border-border px-3 pb-3 pt-2">
+          <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-lg border border-border bg-muted/40 p-1">
+              <TabsTrigger
+                value="attention"
+                className="min-h-8 gap-2 px-2 text-xs font-medium sm:text-sm data-[state=active]:shadow-sm"
+              >
+                <span className="truncate">Needs attention</span>
+                <Badge
+                  tone={openIssues.length > 0 ? "warning" : "success"}
+                  className="h-5 shrink-0 px-1.5 py-0 text-[10px] leading-5"
+                >
+                  {openIssues.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value="all"
+                className="min-h-8 gap-2 px-2 text-xs font-medium sm:text-sm data-[state=active]:shadow-sm"
+              >
+                <span className="truncate">All fields</span>
+                <Badge tone="neutral" className="h-5 shrink-0 px-1.5 py-0 text-[10px] leading-5">
+                  {allFields.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value="json"
+                className="min-h-8 px-2 text-xs font-medium sm:text-sm data-[state=active]:shadow-sm"
+              >
+                Raw JSON
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {viewMode === "attention" && openIssues.length > 0 ? (
+            <div className="mt-2 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50/70 px-2 py-1.5">
+              <span className="px-1 text-xs font-medium text-amber-900 tabular-nums">
+                Issue {(issueIndex % openIssues.length) + 1} of {openIssues.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-amber-900"
+                  onClick={() => goToIssue(issueIndex - 1)}
+                  aria-label="Previous issue"
+                >
+                  <ArrowLeft className="size-3.5" aria-hidden="true" />
+                  Previous
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-amber-900"
+                  onClick={() => goToIssue(issueIndex + 1)}
+                  aria-label={`Next issue, ${(issueIndex % openIssues.length) + 1} of ${openIssues.length}`}
+                >
+                  Next <ArrowRight className="size-3.5" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -270,32 +338,60 @@ export function ReviewForm({
           </div>
         ) : null}
 
-        <div className="space-y-5">
-          {grouped.map(({ group, fields }) =>
-            fields.length === 0 ? null : (
+        {detail.statusNote && detail.status !== "succeeded" ? (
+          <div className="mb-3 rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            {detail.statusNote}
+          </div>
+        ) : null}
+
+        {viewMode === "json" ? (
+          <section aria-labelledby="raw-json-title">
+            <div className="mb-2">
+              <h3 id="raw-json-title" className="text-sm font-semibold">Extraction JSON</h3>
+              <p className="text-xs text-muted-foreground">Read-only structured output for this document.</p>
+            </div>
+            <pre className="overflow-auto rounded-lg border border-border bg-muted/30 p-4 text-xs leading-relaxed">
+              {JSON.stringify(detail.data ?? {}, null, 2)}
+            </pre>
+          </section>
+        ) : viewMode === "attention" ? (
+          openIssues.length === 0 ? (
+            <p className="rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success">
+              Nothing needs attention. Every field is high-confidence, valid, or already resolved.
+            </p>
+          ) : (
+            <div className="space-y-2">{openIssues.map(renderField)}</div>
+          )
+        ) : (
+          <div className="space-y-5">
+            <SchemaReviewControls documentId={documentId} detail={detail} />
+
+            {scalarSections.map(({ group, fields }) => (
               <section key={group} aria-labelledby={`section-${group}`}>
                 <h3 id={`section-${group}`} className="mb-2 text-sm font-semibold text-foreground">
-                  {GROUP_LABELS[group]}
+                  {sectionLabel(group)}
                 </h3>
                 <div className="space-y-2">{fields.map(renderField)}</div>
               </section>
-            ),
-          )}
+            ))}
 
-          <section aria-labelledby="section-lineItems">
-            <h3 id="section-lineItems" className="mb-2 text-sm font-semibold text-foreground">
-              Line items
-            </h3>
-            <LineItemsEditor lineItems={detail.lineItems} renderField={renderField} />
-          </section>
-        </div>
+            {derived.records.map((group) => (
+              <section key={group.key} aria-labelledby={`section-${group.key}`}>
+                <h3 id={`section-${group.key}`} className="mb-2 text-sm font-semibold text-foreground">
+                  {group.label}
+                </h3>
+                <RecordTableEditor group={group} renderField={renderField} />
+              </section>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Approve confirmation */}
       <Dialog open={showApprove} onOpenChange={setShowApprove}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Approve this invoice?</DialogTitle>
+            <DialogTitle>Approve this document?</DialogTitle>
             <DialogDescription>
               Approving promotes this record to your trusted, queryable data. High-confidence fields are
               accepted automatically; {correctionCount} field(s) were explicitly corrected.

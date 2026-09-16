@@ -60,10 +60,11 @@ function matchDate(text: string): { field: "invoiceDate"; filter: { from?: strin
 }
 
 const STOPWORDS = new Set([
-  "show", "me", "all", "find", "list", "invoices", "invoice", "with", "the", "and", "from",
+  "show", "me", "all", "everything", "find", "list", "documents", "document", "docs", "doc", "invoices", "invoice", "with", "the", "and", "from",
   "vendor", "amount", "amounts", "total", "than", "in", "of", "a", "an", "that", "are", "is",
   "above", "over", "below", "under", "greater", "less", "more", "between", "at", "least", "most",
   "approved", "pending", "needs", "review", "unapproved", "draft", "after", "before", "no",
+  "mention", "mentions", "mentioning", "containing", "contains", "about",
 ]);
 
 /** Deterministically interpret natural language into allowlisted filters. */
@@ -120,10 +121,15 @@ export function interpretQuery(text: string | undefined, knownVendors: string[])
 
   // Unparsed terms: tokens not consumed and not stopwords/numbers/symbols.
   const tokens = lower.split(/[^a-z0-9]+/u).filter(Boolean);
-  const unparsedTerms = tokens.filter(
+  let unparsedTerms = tokens.filter(
     (t) => !STOPWORDS.has(t) && !consumed.has(t) && !/^\d/u.test(t) && !(matchedVendor?.toLowerCase().includes(t) ?? false),
   );
-  if (unparsedTerms.length > 0) {
+
+  if (Object.keys(filters).length === 0 && unparsedTerms.length > 0) {
+    filters.search = unparsedTerms.join(" ");
+    for (const term of unparsedTerms) consumed.add(term);
+    unparsedTerms = [];
+  } else if (unparsedTerms.length > 0) {
     warnings.push(`Ignored: ${unparsedTerms.join(", ")}. Only recognized filters are applied.`);
   }
 
@@ -151,6 +157,8 @@ function amountDisplay(a: AmountFilter): string {
 /** Build human-facing chips from canonical filters (kept in sync with execution). */
 export function buildChips(filters: QueryFilters): InterpretedChip[] {
   const chips: InterpretedChip[] = [];
+  if (filters.search) chips.push({ key: "search", label: "Search", display: filters.search });
+  if (filters.schemaKey) chips.push({ key: "schemaKey", label: "Schema", display: filters.schemaKey });
   if (filters.vendor) chips.push({ key: "vendor", label: "Vendor", display: filters.vendor });
   if (filters.amount) chips.push({ key: "amount", label: "Total", display: amountDisplay(filters.amount) });
   if (filters.currency) chips.push({ key: "currency", label: "Currency", display: filters.currency });
@@ -166,5 +174,12 @@ export function buildChips(filters: QueryFilters): InterpretedChip[] {
     chips.push({ key: "reviewStatus", label: "Status", display: filters.reviewStatus.join(", ") });
   }
   if (filters.documentType) chips.push({ key: "documentType", label: "Type", display: filters.documentType });
+  if (filters.fields && filters.fields.length > 0) {
+    chips.push({
+      key: "fields",
+      label: "Fields",
+      display: filters.fields.map((f) => `${f.path} ${f.op}${f.value ? ` ${f.value}` : ""}`).join(", "),
+    });
+  }
   return chips;
 }

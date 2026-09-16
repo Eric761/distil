@@ -16,6 +16,22 @@ const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+
+  /**
+   * Optional OpenAI configuration for the gated LlmExtractor. When
+   * OPENAI_API_KEY is unset, the LlmExtractor is never constructed or called and
+   * extraction relies entirely on the deterministic structural engine.
+   */
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().min(1).default("gpt-4o-mini"),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+
+  /** Per-document LLM input caps (cost control). */
+  LLM_MAX_PAGES: z.coerce.number().int().min(1).default(50),
+  LLM_MAX_INPUT_CHARS: z.coerce.number().int().min(1000).default(200_000),
+  LLM_MAX_INPUT_TOKENS: z.coerce.number().int().min(1000).default(50_000),
+  LLM_CHUNK_CHARS: z.coerce.number().int().min(1000).default(24_000),
+  LLM_MAX_CHUNKS: z.coerce.number().int().min(1).default(8),
 });
 
 export type Env = z.infer<typeof envSchema>;

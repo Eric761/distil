@@ -3,8 +3,12 @@ import type { BoundingBox } from "@invoice/contracts";
 
 export interface FocusedSource {
   fieldId: string;
-  page: number;
+  /** 1-based page for PDF citations; null for text-format citations. */
+  page: number | null;
   box: BoundingBox | null;
+  /** Half-open UTF-16 offsets into the canonical text (text formats). */
+  offsetStart?: number | null;
+  offsetEnd?: number | null;
   text: string;
   label: string;
 }

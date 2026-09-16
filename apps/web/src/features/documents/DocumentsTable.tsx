@@ -1,9 +1,11 @@
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, RefreshCw } from "lucide-react";
 import type { DocumentSummary } from "@invoice/contracts";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProcessingStatusBadge, ReviewStatusBadge } from "@/components/status-indicators";
+import { DOCUMENT_FORMAT_LABELS } from "@/lib/document-summary-line";
 import { cn, formatDateTime, formatMoney } from "@/lib/utils";
 import { useProcessDocument } from "./api";
 
@@ -20,6 +22,51 @@ function attentionTone(doc: DocumentSummary): "danger" | "warning" | null {
   return null;
 }
 
+function DocumentTypeCell({ doc }: { doc: DocumentSummary }) {
+  const category = doc.schemaName ?? (doc.documentType === "invoice" ? "Invoice" : "Unclassified");
+  return (
+    <div className="min-w-0 space-y-1">
+      <Badge tone="info">
+        {DOCUMENT_FORMAT_LABELS[doc.documentFormat]}
+      </Badge>
+      <div className="truncate text-xs text-muted-foreground" title={category}>
+        {category}
+      </div>
+    </div>
+  );
+}
+
+/** Schema-aware preview: invoice business values or the generic schema's best summary fields. */
+function SummaryCell({ doc }: { doc: DocumentSummary }) {
+  if (doc.documentType === "invoice") {
+    return (
+      <div className="min-w-0">
+        <div className="truncate font-medium" title={doc.vendorName ?? undefined}>
+          {doc.vendorName ?? <span className="font-normal text-muted-foreground">—</span>}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {[doc.total ? formatMoney(doc.total, doc.currency) : null, doc.invoiceNumber]
+            .filter(Boolean)
+            .join(" · ") || "No summary available"}
+        </div>
+      </div>
+    );
+  }
+
+  const values = doc.summaryValues.filter((value) => value.value != null && value.value !== "").slice(0, 2);
+  if (values.length === 0) return <span className="text-muted-foreground">No summary available</span>;
+  return (
+    <div className="min-w-0 space-y-0.5">
+      {values.map((value) => (
+        <div key={value.key} className="truncate" title={`${value.label}: ${value.value}`}>
+          <span className="text-muted-foreground">{value.label}: </span>
+          <span className="font-medium">{value.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type RowActionsProps = Readonly<{
   doc: DocumentSummary;
 }>;
@@ -32,24 +79,39 @@ function RowActions({ doc }: RowActionsProps) {
   const process = useProcessDocument(doc.id);
   const retryable = doc.processingStatus === "failed" || doc.processingStatus === "partial";
   const showRetry = retryable || process.isPending;
+  const retryLabel = process.isPending ? "Retrying…" : process.isError ? "Try again" : "Retry";
+  const retryTitle = process.isPending
+    ? "Extraction retry in progress"
+    : process.isError
+      ? "Retry failed. Try extraction again."
+      : `Retry ${doc.processingStatus} extraction`;
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex items-center justify-end gap-1.5">
       {showRetry ? (
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
+          className={cn(
+            "h-8 gap-1.5 px-2.5 font-medium",
+            doc.processingStatus === "failed" &&
+              "bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+            doc.processingStatus === "partial" &&
+              "bg-amber-500/10 text-amber-800 hover:bg-amber-500/15 hover:text-amber-900",
+            process.isError && "ring-1 ring-inset ring-destructive/30",
+          )}
           disabled={process.isPending}
-          title={process.isPending ? "Retrying extraction" : "Retry extraction"}
-          aria-label={process.isPending ? "Retrying extraction" : "Retry extraction"}
+          title={retryTitle}
+          aria-label={retryTitle}
           onClick={(e) => {
             e.stopPropagation();
             process.mutate(true);
           }}
         >
           <RefreshCw className={cn("size-4", process.isPending && "animate-spin")} aria-hidden="true" />
-          {process.isPending ? "Retrying…" : "Retry"}
+          {retryLabel}
         </Button>
       ) : null}
+      {showRetry ? <span className="h-5 w-px bg-border" aria-hidden="true" /> : null}
       <ChevronRight
         className="size-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
         aria-hidden="true"
@@ -93,16 +155,8 @@ function DocumentRow({ doc }: DocumentRowProps) {
           <div className="truncate text-xs text-muted-foreground">{doc.invoiceNumber}</div>
         ) : null}
       </td>
-      <td className="px-4 py-3">
-        {doc.vendorName ? (
-          <span className="line-clamp-2" title={doc.vendorName}>
-            {doc.vendorName}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{formatMoney(doc.total, doc.currency)}</td>
+      <td className="px-4 py-3"><DocumentTypeCell doc={doc} /></td>
+      <td className="px-4 py-3"><SummaryCell doc={doc} /></td>
       <td className="px-4 py-3">
         <ProcessingStatusBadge status={doc.processingStatus} phase={doc.processingPhase} compact />
       </td>
@@ -155,23 +209,23 @@ export function DocumentsTable({
       ) : null}
       {/* table-fixed + colgroup locks column widths so changing badge text or a
           Retry button appearing/disappearing can never reflow the table. */}
-      <table className="w-full table-fixed border-collapse text-sm">
-        <caption className="sr-only">Uploaded invoices and their extraction and review status</caption>
+      <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
+        <caption className="sr-only">Uploaded documents and their extraction and review status</caption>
         <colgroup>
-          <col className="w-[20%]" />
-          <col className="w-[15%]" />
-          <col className="w-[9%]" />
+          <col className="w-[18%]" />
           <col className="w-[12%]" />
-          <col className="w-[13%]" />
+          <col className="w-[20%]" />
+          <col className="w-[11%]" />
+          <col className="w-[11%]" />
           <col className="w-[8%]" />
-          <col className="w-[13%]" />
+          <col className="w-[10%]" />
           <col className="w-[10%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th scope="col" className="border-l-2 border-l-transparent px-4 py-2.5 font-medium">Document</th>
-            <th scope="col" className="px-4 py-2.5 font-medium">Vendor</th>
-            <th scope="col" className="px-4 py-2.5 text-right font-medium">Total</th>
+            <th scope="col" className="px-4 py-2.5 font-medium">Type</th>
+            <th scope="col" className="px-4 py-2.5 font-medium">Summary</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Extraction</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Review</th>
             <th scope="col" className="whitespace-nowrap px-4 py-2.5 font-medium">Issues</th>

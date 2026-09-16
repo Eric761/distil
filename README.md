@@ -1,13 +1,14 @@
-# Distil — Structure from Chaos
+# Distil — Document Intelligence from Chaos
 
-Turn messy documents into **trusted, searchable records** — with human verification,
-field-level provenance, and explainable querying.
+Turn messy PDFs, text files, tables, and markup into **trusted, searchable
+records** — with schema-driven extraction, human verification, field-level
+provenance, and explainable exploration.
 
 |                  |                                                                      |
 | ---------------- | -------------------------------------------------------------------- |
 | **Live demo**    | [https://distil-mq5q.onrender.com](https://distil-mq5q.onrender.com) |
 | **Stack**        | React · Fastify · PostgreSQL · TypeScript                            |
-| **Demo data**    | 29 seeded invoices (approved, review, failed, in-flight)             |
+| **Demo data**    | 29 seeded invoices plus general document-intelligence samples         |
 | **Local app**    | [http://localhost:5173](http://localhost:5173) (API on `:4000`)      |
 | **Design notes** | [`decisions.md`](decisions.md)                                       |
 
@@ -23,7 +24,7 @@ field-level provenance, and explainable querying.
 - [Architecture](#architecture)
 - [Using the app](#using-the-app)
 - [Demo fixtures](#demo-fixtures)
-- [Query examples](#query-examples)
+- [Explore examples](#explore-examples)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
 - [Deployment](#deployment)
@@ -41,7 +42,7 @@ pnpm install
 docker compose up -d db
 cp .env.example .env
 pnpm db:migrate
-pnpm db:seed      # loads 29 demo invoices (idempotent)
+pnpm db:seed      # loads mixed demo documents, including 9 invoice fixtures (idempotent)
 pnpm dev          # web :5173 · api :4000
 ```
 
@@ -81,15 +82,16 @@ automatically on deploy.
 1. Open the app → click **Start walkthrough** on the banner.
 2. **Greenline Maintenance** — ambiguous invoice number; approval blocked.
 3. **Atlas Industrial** — conflicting totals; pick the trusted candidate.
-4. **Redbrick Consulting** — retry after failure; partial extraction.
-5. **Acme Office Supply** — clean invoice; approve into the trusted set.
-6. **Query** → `invoices from Acme above 500 in USD` → click a result’s source link.
+4. **Project brief (Markdown)** — infer a draft schema from headings, labeled facts, and a milestone table.
+5. **Support tickets (CSV)** — repeated records become reviewable fields instead of invoice columns.
+6. **Service summary (HTML)** — parse untrusted markup as canonical text only, with grounded fields.
+7. **Explore** → `Orbital Cloud Migration` or `invoices from Acme above 500 in USD` → open a result’s details.
 
 ---
 
 ## Product tour
 
-Screenshots follow the same **review → approve → query** path as the in-app walkthrough.
+Screenshots follow the same **review → approve → explore** path as the in-app walkthrough.
 
 **1. Documents — evaluator banner (first visit)**
 
@@ -103,7 +105,7 @@ Screenshots follow the same **review → approve → query** path as the in-app 
 
 ![Review queue listing open extraction and validation issues across documents](docs/screenshots/03-review-queue.png)
 
-**4. Review workspace — PDF, fields, and provenance**
+**4. Review workspace — source, fields, and provenance**
 
 ![Split review workspace with invoice PDF, structured fields, and source highlighting](docs/screenshots/04-review-split-workspace.png)
 
@@ -111,41 +113,47 @@ Screenshots follow the same **review → approve → query** path as the in-app 
 
 ![Document library table with extraction status, review state, and workspace summary](docs/screenshots/05-documents-library.png)
 
-**6. Query — approved records with traceability**
+**6. Explore — approved records with traceability**
 
-![Query page with natural-language filters, approved results, and source links](docs/screenshots/06-query-approved-records.png)
+![Explore page with natural-language filters, approved results, and source links](docs/screenshots/06-query-approved-records.png)
 
 ---
 
 ## What this is
 
-An accounts-payable review tool for operations analysts — **not** a generic file
-uploader and **not** an AI chat demo.
+A document-intelligence platform for turning heterogeneous business documents into
+trusted records. It is still grounded in the original invoice workflow, including
+the 9 curated invoice fixtures, `invoice_records` projection, and reconciliation rule, but
+the platform now supports multiple document types and schema versions.
 
-The hard problem is not extraction. It is **converting uncertain extraction into
-trusted data**: surfacing uncertainty, proving where each value came from,
-preserving corrections, and blocking approval while material issues remain.
-
-This submission interprets the brief as: _unstructured invoice PDFs → clean,
-structured, queryable data with human trust_. Extraction is a **deterministic
-fixture simulation** so the async pipeline, review workspace, provenance, approval
-gates, and query loop stay reliable in evaluation.
+The hard problem is not just extraction. It is **converting uncertain extraction
+into trusted data**: choosing the right schema, surfacing uncertainty, proving
+where each value came from, preserving corrections, and blocking approval while
+material issues remain.
 
 ```text
-Invoice PDF
+PDF / TXT / Markdown / CSV / HTML
   → persisted upload
-  → asynchronous deterministic extraction
-  → confidence-aware human review
-  → corrections (original values preserved)
+  → canonical parse
+  → classify + infer or reuse a versioned schema
+  → hybrid extraction
+  → schema-driven validation
+  → confidence-aware review with provenance
   → guarded approval
-  → normalized trusted record
-  → explainable hybrid query
-  → result-to-source traceability
+  → trusted record snapshot
+  → Explore with data, JSON, and lineage
 ```
 
-> **Demo extraction:** not real OCR/LLM. Only built-in sample PDFs extract
-> successfully; arbitrary uploads are stored and fail honestly. Product depth is in
-> the **trust workflow**, not raw OCR accuracy.
+**Supported formats:** text-layer PDF, TXT, Markdown, CSV, and HTML. Image-only
+PDFs are out of scope and fail with an OCR-required error. HTML is parsed as
+untrusted input and is never rendered as same-origin markup.
+
+**Hybrid extraction:** the pipeline runs FixtureExtractor → optional gated OpenAI
+LlmExtractor → deterministic StructuralExtractor. `OPENAI_API_KEY` unset means no
+LLM extractor is constructed or called. The default model is `gpt-4o-mini`;
+fixtures never call OpenAI; high-coverage structural results skip OpenAI. LLM
+input is capped by `LLM_MAX_PAGES`, `LLM_MAX_INPUT_CHARS`,
+`LLM_MAX_INPUT_TOKENS`, `LLM_CHUNK_CHARS`, and `LLM_MAX_CHUNKS`.
 
 ---
 
@@ -154,25 +162,33 @@ Invoice PDF
 **Ingest & process**
 
 - Document library with pagination, filtering, search, and live processing status
-- Upload with validation, progress, cancellation, and duplicate detection
-- Recoverable async processing with visible phases, retry, and partial results
+- Upload with validation, progress, cancellation, duplicate detection, and format-specific parser errors
+- Canonical parsers for text-layer PDF, TXT, Markdown, CSV, and untrusted HTML
+- Recoverable async processing with visible phases, retry, partial results, and append-only extraction lineage
 
 **Review & approve**
 
-- Split workspace: PDF on one side, structured fields on the other
-- Field-level provenance — click a value to highlight its source on the PDF
+- Adaptive split workspace: document text/PDF on one side, schema-driven records on the other
+- Field-level provenance — quote-then-resolve grounding links values back to source text or PDF regions
 - Confidence, validation, and review status as three distinct dimensions
 - Edits preserve the original extracted value; confirm / correct / N/A / resolve conflict
 - Server-side approval gates — material unresolved fields block approval
+- Approved records keep a last-approved snapshot for traceability
 
-**Query & export**
+**Explore & export**
 
 - Natural language → visible, editable filter chips (unsupported terms are surfaced, never silently applied)
-- Result-to-source traceability from query hits back to the PDF
-- Summary strip + CSV/JSON export of the full matching set
+- Generic phrases fall back to a visible Search chip, while invoice terms still map to typed AP filters
+- One row per document with a details drawer for Data, JSON, and History
+- Result-to-source traceability from values back to source evidence
+- Hardened CSV and JSON export of the full matching set
 
-**Cross-document workflow**
+**Schemas & cross-document workflow**
 
+- Schema inference creates a draft proposal that can be edited, published, and reused
+- New generic uploads conservatively match published schemas by field overlap before falling back to ad-hoc inference
+- Published schema versions are immutable
+- Non-invoice schemas use generic allowlisted checks such as date ordering and repeated-record completeness
 - Review queue ranks issues across all documents by materiality and uncertainty
 - **Review next issue** jumps straight to the highest-priority field
 
@@ -184,8 +200,9 @@ Invoice PDF
 | ------ | ---------------------------------------------------------------------------- |
 | Web    | React 18, Vite, TanStack Query, React Hook Form, Zod, Tailwind, Radix, pdfjs |
 | API    | Node, Fastify, Drizzle ORM, in-process worker                                |
-| DB     | PostgreSQL — JSONB raw extraction + normalized relational records            |
+| DB     | PostgreSQL — JSONB raw extraction + typed `extraction_fields` indexes + relational records |
 | Shared | `packages/contracts` — Zod schemas for web + API                             |
+| Parse  | `packages/extraction` — canonical parsers, structural extraction, LLM gate    |
 
 ```text
 Production                         Local dev
@@ -195,46 +212,62 @@ Browser ─▶ Fastify /api/*          Vite (5173) ─▶ /api proxy ─▶ Fast
 ```
 
 ```text
-apps/web           React/Vite SPA (documents, review, provenance, query)
+apps/web           React/Vite SPA (documents, review, explore, schemas)
 apps/api           Fastify API, Drizzle schema/migrations, worker, services
 packages/contracts Zod contracts shared by web + api
-packages/fixtures  Deterministic PDF rendering + fixture profiles
+packages/extraction Canonical parsers, structural extraction, LLM provider gate
+packages/fixtures  Deterministic invoice PDF rendering + fixture profiles
 ```
 
 ---
 
 ## Using the app
 
-Nav: **Documents** · **Review queue** · **Query**
+Nav: **Documents** · **Review queue** · **Explore** · **Schemas**
 
 ### Documents
 
-- After `pnpm db:seed`, the library lists **29 demo invoices** in mixed states.
+- After `pnpm db:seed`, the library lists **23 mixed demo documents**: 9 invoices
+  and 14 Markdown, TXT, CSV, and HTML files in varied states.
 - The **sample gallery** lets you ingest additional built-in PDFs; each card
   previews the trust challenge it demonstrates.
-- **Upload** accepts PDFs ≤ 5 MB. Arbitrary PDFs persist but fail honestly —
-  only built-in samples extract.
+- **Upload** accepts supported documents ≤ 5 MB: text-layer PDF, TXT, Markdown,
+  CSV, and HTML.
+- Image-only PDFs persist but fail with an OCR-required error.
 - Processing badges update live (`queued → processing → succeeded/partial/failed`).
 
 ### Review workspace
 
-- **Open** a processed document → PDF left, structured record right.
+- **Open** a processed document → source viewer left, schema-driven record right.
 - **Issue navigator** jumps between fields that need attention.
-- **View source** highlights the exact PDF region (field-level provenance).
+- **View source** highlights the exact evidence when quote-then-resolve grounding
+  can locate it.
 - **Confirm** / **Correct** / **Not applicable** / **pick a candidate** for conflicts.
-- **Save** commits a versioned batch; stale edits show a conflict dialog.
+- **Save** commits a versioned batch; stale edits show a conflict dialog using
+  `expectedExtractionId` and `expectedVersion`.
 
 ### Approve
 
 - Approval is gated **server-side**. Try _Greenline_ (missing invoice #) or _Atlas_
   (conflicting total) to see blockers listed with focus links.
-- Approved records enter default query results. Editing an approved field **reopens** it.
+- Approved records enter default Explore results and store a last-approved snapshot.
+  Editing an approved field **reopens** it.
 
-### Query
+### Explore
 
 - Type natural language or use an example → **Search** → refine **editable chips**.
-- Click a result’s **source link** to jump to the highlighted region on the PDF.
+- Open a row’s details drawer to inspect **Data**, raw **JSON**, and extraction
+  **History**.
 - **Export CSV** / **Export JSON** downloads the full matching set.
+
+`/query` redirects to `/explore` for older links.
+
+### Schemas
+
+- Infer a draft schema from new document shapes immediately after processing.
+- Review and edit draft proposals before publishing.
+- Publish a version to reuse it across matching documents; published versions are
+  immutable.
 
 ### Review queue
 
@@ -266,7 +299,7 @@ restarts mid-extraction, stuck attempts are re-queued.
 
 ---
 
-## Query examples
+## Explore examples
 
 Natural language maps to a **fixed, allowlisted** filter set. Approved records are
 searched by default.
@@ -287,17 +320,25 @@ Unparsed terms are listed with a warning — never silently applied. No arbitrar
 
 ```bash
 pnpm typecheck    # strict TypeScript (all workspaces)
-pnpm test         # Vitest — web + API
+pnpm test         # Vitest — web + API + extraction
 pnpm build        # typecheck + build web bundle
 pnpm start        # production: API + built UI on $PORT
 ```
 
-| Package    | Test locations                                                           |
-| ---------- | ------------------------------------------------------------------------ |
-| `apps/web` | `src/features/**/__tests__/`, `src/components/__tests__/`                |
-| `apps/api` | `src/lib/__tests__/`, `src/services/__tests__/`, `src/routes/__tests__/` |
+| Package               | Test locations                                                           |
+| --------------------- | ------------------------------------------------------------------------ |
+| `apps/web`            | `src/features/**/__tests__/`, `src/components/__tests__/`                |
+| `apps/api`            | `src/lib/__tests__/`, `src/services/__tests__/`, `src/routes/__tests__/` |
+| `packages/extraction` | `src/__tests__/`                                                         |
 
-Run one workspace: `pnpm --filter @invoice/web test` or `pnpm --filter @invoice/api test`.
+Run one workspace: `pnpm --filter @invoice/web test`, `pnpm --filter @invoice/api test`, or `pnpm --filter @invoice/extraction test`.
+
+**Optional OpenAI extraction:**
+
+OpenAI is disabled unless `OPENAI_API_KEY` is set. When enabled, the gated
+LlmExtractor uses `OPENAI_MODEL` (default `gpt-4o-mini`) and respects the
+document caps in `.env.example`: `LLM_MAX_PAGES`, `LLM_MAX_INPUT_CHARS`,
+`LLM_MAX_INPUT_TOKENS`, `LLM_CHUNK_CHARS`, and `LLM_MAX_CHUNKS`.
 
 **Reset database:**
 
@@ -314,7 +355,8 @@ pnpm db:migrate && pnpm db:seed
 | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `Invalid environment configuration`             | `cp .env.example .env` and set `DATABASE_URL`                                                                              |
 | Empty document library                          | `pnpm db:migrate && pnpm db:seed`                                                                                          |
-| Uploaded PDF fails to extract                   | Expected — only built-in samples extract; use **Ingest** on a sample                                                       |
+| Image-only PDF fails to extract                 | Expected — OCR is out of scope; upload a text-layer PDF or another supported text/table format                            |
+| OpenAI is not called                            | Expected when `OPENAI_API_KEY` is unset, the document is a fixture, or structural extraction already has high coverage     |
 | API/Vite port in use                            | Change `PORT` in `.env` or Vite’s dev port                                                                                 |
 | PostgreSQL port 5432 in use                     | Remap in `docker-compose.yml` + update `DATABASE_URL` (see [Quick start](#quick-start))                                    |
 | Render deploy fails health check                | First deploy seed is slow; set Health Check path `/api/health`, raise timeout in Dashboard (see [Deployment](#deployment)) |
@@ -412,11 +454,12 @@ pnpm db:seed` / `pnpm start`.
 
 ## Limitations
 
-- Deterministic fixture extraction — not general OCR/AI
+- No OCR for image-only PDFs
 - No authentication — approval stores a timestamp, not an actor
-- PDF bytes in PostgreSQL — fine for a demo; blob table is isolated for future object storage
+- Document bytes in PostgreSQL — fine for a demo; blob table is isolated for future object storage
 - In-process worker — single-instance; reliable with lease/recovery, not horizontally scalable
 - Multi-currency — amounts are never converted; currency is always shown
+- HTML is parsed as untrusted content and never rendered as same-origin markup
 
 Review queue API: `GET /api/review-queue` — same provenance and approval rules as
 single-document review.

@@ -8,13 +8,35 @@ import {
   processingStatus,
   queryStringArray,
   reviewStatus,
+  sourceKind,
 } from "./common.js";
+
+/**
+ * A schema-declared summary value shown in the generic document/Explore tables.
+ * Non-invoice documents surface their own summary fields instead of vendor and
+ * total; a bounded list keeps the table stable.
+ */
+export const summaryValue = z.object({
+  key: z.string(),
+  label: z.string(),
+  /** Stringified display value, or null when missing. */
+  value: z.string().nullable(),
+});
+export type SummaryValue = z.infer<typeof summaryValue>;
+
+/** Physical source format, classified by the backend from filename + MIME type. */
+export const documentFormat = z.enum(["pdf", "txt", "markdown", "csv", "html"]);
+export type DocumentFormat = z.infer<typeof documentFormat>;
 
 /** Compact row for the document library table. */
 export const documentSummary = z.object({
   id: z.string().uuid(),
   originalFilename: z.string(),
   documentType,
+  documentFormat,
+  /** Human-readable schema/type name (e.g. "Invoice", "Resume"). */
+  schemaName: z.string().nullable(),
+  sourceKind,
   sizeBytes: z.number().int().min(0),
   processingStatus,
   reviewStatus,
@@ -22,11 +44,13 @@ export const documentSummary = z.object({
   processingPhase: z.string().nullable(),
   failureCode: z.string().nullable(),
   failureMessage: z.string().nullable(),
-  /** Normalized preview fields (populated once extraction commits). */
+  /** Invoice preview fields (populated once an invoice extraction commits). */
   vendorName: z.string().nullable(),
   invoiceNumber: z.string().nullable(),
   total: decimalString.nullable(),
   currency: currencyCode.nullable(),
+  /** Generic schema-declared summary values (non-invoice documents). */
+  summaryValues: z.array(summaryValue),
   /** Count of fields still needing attention. */
   openIssues: z.number().int().min(0).nullable(),
   createdAt: z.string().datetime(),
@@ -70,6 +94,8 @@ export type ProcessingAttemptSummary = z.infer<typeof processingAttemptSummary>;
 export const documentDetail = z.object({
   summary: documentSummary,
   latestAttempt: processingAttemptSummary.nullable(),
+  /** Current extraction promoted for review. Changes after successful re-extract. */
+  currentExtractionId: z.string().uuid().nullable(),
   /** Whether a retryable failure exists. */
   canRetry: z.boolean(),
   /** Whether an extraction is available to review. */
@@ -98,8 +124,16 @@ export const uploadResponse = z.object({
 });
 export type UploadResponse = z.infer<typeof uploadResponse>;
 
+export const processMode = z.enum(["initial", "retry", "reextract"]);
+export type ProcessMode = z.infer<typeof processMode>;
+
 export const processRequest = z.object({
+  /** Legacy retry flag retained for existing callers. */
   retry: z.boolean().optional(),
+  /** Processing intent. `reextract` may target a specific schema version. */
+  mode: processMode.optional(),
+  schemaVersionId: z.string().uuid().optional(),
+  forceReparse: z.boolean().optional(),
 });
 export type ProcessRequest = z.infer<typeof processRequest>;
 

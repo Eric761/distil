@@ -2,5 +2,8 @@ export * from "./common.js";
 export * from "./errors.js";
 export * from "./extraction.js";
 export * from "./documents.js";
+export * from "./parse.js";
+export * from "./schemas.js";
+export * from "./history.js";
 export * from "./query.js";
 export * from "./review-queue.js";

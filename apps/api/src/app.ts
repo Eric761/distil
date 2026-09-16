@@ -9,6 +9,7 @@ import { registerErrorHandler } from "./lib/errors.js";
 import { documentRoutes } from "./routes/documents.js";
 import { queryRoutes } from "./routes/query.js";
 import { reviewQueueRoutes } from "./routes/review-queue.js";
+import { schemaRoutes } from "./routes/schemas.js";
 import { healthRoutes } from "./routes/health.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -36,6 +37,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(documentRoutes);
   await app.register(queryRoutes);
   await app.register(reviewQueueRoutes);
+  await app.register(schemaRoutes);
   await app.register(healthRoutes);
 
   // In production, serve the built SPA from the same origin (no CORS).

@@ -22,6 +22,7 @@ describe("documentDetail schema", () => {
         startedAt: "2024-09-12T10:00:00.000Z",
         finishedAt: "2024-09-12T10:01:00.000Z",
       },
+      currentExtractionId: "22222222-2222-4222-8222-222222222222",
       canRetry: false,
       hasExtraction: true,
       approvedAt: null,

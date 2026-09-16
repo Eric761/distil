@@ -23,11 +23,15 @@ export async function fetchAllResultRows(request: QueryRequest): Promise<QueryRe
 }
 
 const CSV_COLUMNS: Array<{ header: string; get: (r: QueryResultRow) => string | number | null }> = [
+  { header: "Document", get: (r) => r.originalFilename },
+  { header: "Type", get: (r) => r.documentType },
+  { header: "Schema", get: (r) => r.schemaName },
   { header: "Vendor", get: (r) => r.vendorName },
   { header: "Invoice #", get: (r) => r.invoiceNumber },
   { header: "Invoice date", get: (r) => r.invoiceDate },
   { header: "Currency", get: (r) => r.currency },
   { header: "Total", get: (r) => r.total },
+  { header: "Summary values", get: (r) => r.summaryValues.map((v) => `${v.label}: ${v.value ?? ""}`).join("; ") },
   { header: "Review status", get: (r) => r.reviewStatus },
   { header: "Open issues", get: (r) => r.openIssues },
   { header: "Document ID", get: (r) => r.documentId },
@@ -35,7 +39,10 @@ const CSV_COLUMNS: Array<{ header: string; get: (r: QueryResultRow) => string | 
 
 function csvCell(value: string | number | null): string {
   if (value === null || value === undefined) return "";
-  const s = String(value);
+  let s = String(value);
+  // Neutralize spreadsheet formula injection: a leading =, +, -, @, tab, or CR
+  // can be interpreted as a formula by Excel/Sheets. Prefix with an apostrophe.
+  if (/^[=+\-@\t\r]/u.test(s)) s = `'${s}`;
   return /[",\n]/u.test(s) ? `"${s.replace(/"/gu, '""')}"` : s;
 }
 

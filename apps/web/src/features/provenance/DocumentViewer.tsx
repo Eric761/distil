@@ -53,10 +53,10 @@ export function DocumentViewer({ documentId, pageCount }: Props) {
 
   // When a field's source is focused, jump to its page.
   React.useEffect(() => {
-    if (focused && focused.page !== page) {
+    if (focused && focused.page != null && focused.page !== page) {
       setPage(focused.page);
     }
-    if (focused) {
+    if (focused && focused.page != null) {
       announce(`Showing source for ${focused.label} on page ${focused.page}.`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -14,14 +14,23 @@ describe("ReviewQueuePage", () => {
 
     renderWithProviders(<ReviewQueuePage />, { route: "/review-queue", path: "*" });
 
-    // Human summary of the outstanding work.
-    expect(await screen.findByText(/3 open issues across 1 document/i)).toBeInTheDocument();
+    // Header explains prioritization; the summary owns the numeric workload.
+    expect(await screen.findByText(/ranked by approval blockers/i)).toBeInTheDocument();
+    const summary = screen.getByLabelText(/review queue summary/i);
+    expect(within(summary).getByText("Open issues")).toBeInTheDocument();
+    expect(within(summary).getByText("Documents affected")).toBeInTheDocument();
+    expect(within(summary).getByText(/Northstar Logistics · Total/i)).toBeInTheDocument();
+    expect(within(summary).getByText("Blocking approval")).toBeInTheDocument();
 
     // The top issue's action-oriented message is shown.
     const row = (await screen.findByText("Northstar Logistics")).closest("li")!;
+    expect(within(row).getByText("Blocking approval")).toBeInTheDocument();
+    expect(within(row).getByText("Field")).toBeInTheDocument();
+    expect(within(row).getByText("Checks")).toBeInTheDocument();
+    expect(within(row).getByText("Status")).toBeInTheDocument();
     expect(within(row).getByText(/choose the correct one/i)).toBeInTheDocument();
-    // Remaining issues beyond the top one are surfaced as a count.
-    expect(within(row).getByText(/\+2 more issues/i)).toBeInTheDocument();
+    // Remaining issues are summarized once, without an ambiguous secondary count.
+    expect(within(row).getByText(/3 open issues/i)).toBeInTheDocument();
 
     // Deep link targets the specific field via focusField and marks its origin.
     const link = within(row).getByRole("link", { name: /review/i });
@@ -55,6 +64,7 @@ describe("ReviewQueuePage", () => {
     const nextButton = await screen.findByRole("button", { name: /review next issue/i });
     expect(nextButton).toBeInTheDocument();
     expect(await screen.findByText("Urgent Vendor")).toBeInTheDocument();
+    expect(screen.getByText(/Urgent Vendor · Invoice number/i)).toBeInTheDocument();
   });
 
   it("shows an all-clear state when nothing needs review", async () => {

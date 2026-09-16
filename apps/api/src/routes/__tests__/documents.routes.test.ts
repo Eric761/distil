@@ -16,14 +16,14 @@ describe("document routes", () => {
     await closeDb();
   });
 
-  it("rejects non-PDF uploads before persistence", async () => {
+  it("rejects unsupported file types before persistence", async () => {
     const boundary = "----distil-test";
     const payload = [
       `--${boundary}`,
-      'Content-Disposition: form-data; name="file"; filename="notes.txt"',
-      "Content-Type: text/plain",
+      'Content-Disposition: form-data; name="file"; filename="malware.exe"',
+      "Content-Type: application/x-msdownload",
       "",
-      "not a pdf",
+      "MZ not a document",
       `--${boundary}--`,
       "",
     ].join("\r\n");

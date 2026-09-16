@@ -6,7 +6,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Link, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { makeTestQueryClient, renderWithProviders } from "@/test/render";
 import { AnnouncerProvider } from "@/components/live-region";
-import { makeDetail, makeField, DOC_ID } from "@/test/fixtures";
+import {
+  DRAFT_VERSION_ID,
+  DOC_ID,
+  makeDetail,
+  makeField,
+  makeSchemaListResponse,
+} from "@/test/fixtures";
 import { server } from "@/test/msw-server";
 import { ProvenanceProvider } from "@/features/provenance/provenance-context";
 import { ReviewForm } from "../ReviewForm";
@@ -42,13 +48,13 @@ function blockedDetail(): ExtractionDetail {
   });
   return makeDetail({
     fields: [invoiceNumber, vendorName],
-    lineItems: [],
     approvalBlockers: [{ fieldId: invoiceNumber.id, path: "invoiceNumber", message: "Invoice number is required." }],
     progress: { totalAttentionFields: 2, resolvedAttentionFields: 0 },
   });
 }
 
 function renderForm(detail: ExtractionDetail, reviewStatus: ReviewStatus = "needs_review") {
+  server.use(http.get("*/api/schemas", () => HttpResponse.json(makeSchemaListResponse())));
   return renderWithProviders(
     <ProvenanceProvider>
       <ReviewForm documentId={DOC_ID} detail={detail} reviewStatus={reviewStatus} />
@@ -58,7 +64,8 @@ function renderForm(detail: ExtractionDetail, reviewStatus: ReviewStatus = "need
 }
 
 describe("ReviewForm", () => {
-  it("blocks approval and lists the server blockers while showing issue position", () => {
+  it("blocks approval and shows issue navigation in the attention view", async () => {
+    const user = userEvent.setup();
     renderForm(blockedDetail());
 
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
@@ -66,7 +73,8 @@ describe("ReviewForm", () => {
     // chip, so assert at least one occurrence.
     expect(screen.getAllByText("Invoice number is required.").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Resolve before approving:/i)).toBeInTheDocument();
-    // Issue navigator reports position out of the total open issues.
+    await user.click(screen.getByRole("tab", { name: /Needs attention/i }));
+    // The contextual issue navigator reports position out of the open issues.
     expect(screen.getByRole("button", { name: /Next issue, 1 of 2/ })).toBeInTheDocument();
   });
 
@@ -106,7 +114,6 @@ describe("ReviewForm", () => {
           reviewState: "needs_review",
         }),
       ],
-      lineItems: [],
     });
     renderForm(detail);
 
@@ -129,7 +136,6 @@ describe("ReviewForm", () => {
           makeDetail({
             version: 2,
             fields: [makeField({ path: "vendorName", label: "Vendor name", reviewState: "confirmed", needsAttention: false })],
-            lineItems: [],
             approvalBlockers: [],
             progress: { totalAttentionFields: 1, resolvedAttentionFields: 1 },
           }),
@@ -149,7 +155,6 @@ describe("ReviewForm", () => {
           extractedValue: "Acme Inc",
         }),
       ],
-      lineItems: [],
       progress: { totalAttentionFields: 1, resolvedAttentionFields: 0 },
     });
     renderForm(detail);
@@ -177,7 +182,6 @@ describe("ReviewForm", () => {
           extractedValue: "Acme Inc",
         }),
       ],
-      lineItems: [],
       approvalBlockers: [],
       progress: { totalAttentionFields: 0, resolvedAttentionFields: 0 },
     });
@@ -186,6 +190,30 @@ describe("ReviewForm", () => {
     expect(screen.getByText("No review needed")).toBeInTheDocument();
     expect(screen.queryByText("0/0 resolved")).not.toBeInTheDocument();
     expect(screen.getByText(/All clear/i)).toBeInTheDocument();
+  });
+
+  it("keeps focus while editing an inferred schema key", async () => {
+    const user = userEvent.setup();
+    const base = makeDetail();
+    renderForm(
+      makeDetail({
+        schemaVersionId: DRAFT_VERSION_ID,
+        schema: { ...base.schema, status: "draft", adHoc: true },
+      }),
+    );
+
+    const keyInput = screen.getByLabelText("Schema key for vendorName");
+    await user.clear(keyInput);
+    await user.type(keyInput, "supplierName");
+
+    expect(keyInput).toHaveValue("supplierName");
+    expect(keyInput).toHaveFocus();
+  });
+
+  it("does not allow re-extracting with the current schema version", () => {
+    renderForm(makeDetail());
+
+    expect(screen.getByRole("button", { name: /Already extracted/i })).toBeDisabled();
   });
 
   it("blocks approval when a material field has a reconciliation warning", () => {
@@ -209,7 +237,6 @@ describe("ReviewForm", () => {
           needsAttention: true,
         }),
       ],
-      lineItems: [],
       approvalBlockers: [
         {
           fieldId: "total-field",
@@ -227,6 +254,7 @@ describe("ReviewForm", () => {
 
   it("guards in-app navigation when there are unsaved changes", async () => {
     const user = userEvent.setup();
+    server.use(http.get("*/api/schemas", () => HttpResponse.json(makeSchemaListResponse())));
     const detail = makeDetail({
       fields: [
         makeField({
@@ -239,7 +267,6 @@ describe("ReviewForm", () => {
           effectiveValue: "Acme Inc",
         }),
       ],
-      lineItems: [],
       progress: { totalAttentionFields: 1, resolvedAttentionFields: 0 },
     });
 

@@ -1,12 +1,13 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { FileStack, ListChecks, Search } from "lucide-react";
+import { Compass, FileStack, LayoutGrid, ListChecks } from "lucide-react";
 import { DistilMark } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/documents", label: "Documents", Icon: FileStack },
   { to: "/review-queue", label: "Review queue", Icon: ListChecks },
-  { to: "/query", label: "Query", Icon: Search },
+  { to: "/explore", label: "Explore", Icon: Compass },
+  { to: "/schemas", label: "Schemas", Icon: LayoutGrid },
 ];
 
 export function AppLayout() {

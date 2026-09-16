@@ -93,8 +93,12 @@ export const reviewFieldStateEnum = pgEnum("review_field_state", [
 
 export const fieldTypeEnum = pgEnum("field_type", [
   "string",
+  "text",
+  "integer",
   "decimal",
   "date",
+  "datetime",
+  "boolean",
   "currency",
   "enum",
   "object",
@@ -110,12 +114,18 @@ export const documents = pgTable(
     sizeBytes: integer("size_bytes").notNull(),
     sha256: text("sha256").notNull(),
     documentType: text("document_type").notNull().default("invoice"),
+    /** Human-readable schema/type name; null until classified. */
+    schemaName: text("schema_name"),
+    /** How the source is rendered for provenance: 'pdf' | 'text'. */
+    sourceKind: text("source_kind").notNull().default("pdf"),
     processingStatus: processingStatusEnum("processing_status").notNull().default("uploaded"),
     reviewStatus: reviewStatusEnum("review_status").notNull().default("not_ready"),
     processingPhase: text("processing_phase"),
     failureCode: text("failure_code"),
     failureMessage: text("failure_message"),
     currentExtractionId: uuid("current_extraction_id"),
+    /** Last approved extraction; stays queryable while a new run is pending. */
+    lastApprovedExtractionId: uuid("last_approved_extraction_id"),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -149,6 +159,9 @@ export const processingAttempts = pgTable(
     phase: text("phase"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
+    mode: text("mode").notNull().default("initial"),
+    schemaVersionId: uuid("schema_version_id"),
+    forceReparse: boolean("force_reparse").notNull().default(false),
     availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
     startedAt: timestamp("started_at", { withTimezone: true }),
@@ -161,6 +174,68 @@ export const processingAttempts = pgTable(
   }),
 );
 
+/**
+ * Schema families (stable identity) and their versions. Published versions are
+ * immutable and reusable; drafts (including inferred ad-hoc proposals) can be
+ * edited before publishing. The built-in invoice schema is seeded as
+ * `invoice` / published `v1`.
+ */
+export const documentSchemas = pgTable(
+  "document_schemas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    builtIn: boolean("built_in").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    keyIdx: uniqueIndex("document_schemas_key_key").on(t.key),
+  }),
+);
+
+export const documentSchemaVersions = pgTable(
+  "document_schema_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    schemaId: uuid("schema_id")
+      .notNull()
+      .references(() => documentSchemas.id, { onDelete: "cascade" }),
+    version: text("version").notNull(),
+    status: text("status").notNull().default("draft"), // "draft" | "published"
+    adHoc: boolean("ad_hoc").notNull().default(false),
+    /** The field tree (array of SchemaFieldDef). */
+    definition: jsonb("definition").notNull().$type<unknown>(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    schemaVersionIdx: uniqueIndex("document_schema_versions_key").on(t.schemaId, t.version),
+    schemaIdx: index("document_schema_versions_schema_id_idx").on(t.schemaId),
+  }),
+);
+
+/** Immutable canonical parse: plain text, blocks, page geometry, content hash. */
+export const documentParses = pgTable(
+  "document_parses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind").notNull(),
+    text: text("text").notNull(),
+    blocks: jsonb("blocks").notNull().$type<unknown>(),
+    pages: jsonb("pages").notNull().$type<Array<{ page: number; widthPt: number; heightPt: number }>>(),
+    parserVersion: text("parser_version").notNull(),
+    contentHash: text("content_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    docIdx: index("document_parses_document_id_idx").on(t.documentId),
+  }),
+);
+
 export const extractions = pgTable(
   "extractions",
   {
@@ -169,8 +244,22 @@ export const extractions = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
     schemaVersion: text("schema_version").notNull(),
+    /** Stable schema family key (e.g. "invoice"); null for pure ad-hoc runs. */
+    schemaKey: text("schema_key"),
+    /** The schema version row this extraction was produced against. */
+    schemaVersionId: uuid("schema_version_id"),
+    /** Canonical parse used (null for fixture extractions). */
+    parseId: uuid("parse_id"),
+    /** Lineage: the extraction this one superseded (append-only history). */
+    parentExtractionId: uuid("parent_extraction_id"),
     engineVersion: text("engine_version").notNull(),
-    status: text("status").notNull(), // "succeeded" | "partial"
+    /** Which extractor produced this: "fixture" | "structural" | "llm". */
+    extractorKey: text("extractor_key").notNull().default("fixture"),
+    /** Provider model when the LLM extractor was used (e.g. "gpt-4o-mini"). */
+    providerModel: text("provider_model"),
+    sourceKind: text("source_kind").notNull().default("pdf"),
+    status: text("status").notNull(), // "succeeded" | "partial" | "degraded"
+    statusNote: text("status_note"),
     presentSections: jsonb("present_sections").notNull().$type<string[]>(),
     pages: jsonb("pages").notNull().$type<Array<{ page: number; widthPt: number; heightPt: number }>>(),
     rawPayload: jsonb("raw_payload").notNull(),
@@ -182,6 +271,25 @@ export const extractions = pgTable(
   }),
 );
 
+/** Immutable lineage/audit events powering the History drill-in. */
+export const documentEvents = pgTable(
+  "document_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    summary: text("summary").notNull(),
+    actor: text("actor"),
+    extractionId: uuid("extraction_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    docIdx: index("document_events_document_id_idx").on(t.documentId),
+  }),
+);
+
 export const extractionFields = pgTable(
   "extraction_fields",
   {
@@ -190,16 +298,30 @@ export const extractionFields = pgTable(
       .notNull()
       .references(() => extractions.id, { onDelete: "cascade" }),
     path: text("path").notNull(),
+    /** Stable schema-field key, e.g. "lineItems[].lineTotal". */
+    schemaFieldKey: text("schema_field_key"),
     label: text("label").notNull(),
     fieldGroup: text("field_group").notNull(),
     type: fieldTypeEnum("type").notNull(),
+    /** Structural role: "scalar" | "object" | "array". */
+    nodeKind: text("node_kind").notNull().default("scalar"),
     required: boolean("required").notNull().default(false),
     material: boolean("material").notNull().default(false),
+    /** Explicit presence state (distinct from a null value). */
+    presenceState: text("presence_state").notNull().default("present"),
+    valueOrigin: text("value_origin").notNull().default("extracted"),
     extractedValue: jsonb("extracted_value"),
     correctedValue: jsonb("corrected_value"),
+    /** Typed effective-value index columns (written at commit/correction). */
+    valueText: text("value_text"),
+    valueNumeric: numeric("value_numeric", { precision: 38, scale: 6 }),
+    valueDate: text("value_date"),
+    valueBoolean: boolean("value_boolean"),
     confidenceScore: real("confidence_score"),
     confidenceState: confidenceStateEnum("confidence_state").notNull(),
     confidenceReason: text("confidence_reason"),
+    /** Parse certainty (how sure we read the text correctly). */
+    parseConfidence: real("parse_confidence"),
     validationState: validationStateEnum("validation_state").notNull().default("not_checked"),
     validationIssues: jsonb("validation_issues").notNull().$type<
       Array<{ severity: "error" | "warning"; message: string }>
@@ -215,6 +337,9 @@ export const extractionFields = pgTable(
   (t) => ({
     extractionPathIdx: uniqueIndex("extraction_fields_path_key").on(t.extractionId, t.path),
     extractionIdx: index("extraction_fields_extraction_id_idx").on(t.extractionId),
+    schemaFieldIdx: index("extraction_fields_schema_field_idx").on(t.schemaFieldKey),
+    valueTextIdx: index("extraction_fields_value_text_idx").on(t.valueText),
+    valueNumericIdx: index("extraction_fields_value_numeric_idx").on(t.valueNumeric),
   }),
 );
 
@@ -225,8 +350,15 @@ export const sourceReferences = pgTable(
     fieldId: uuid("field_id")
       .notNull()
       .references(() => extractionFields.id, { onDelete: "cascade" }),
-    page: integer("page").notNull(),
+    /** 1-based page for PDF citations; null for text-format citations. */
+    page: integer("page"),
     box: jsonb("box").$type<{ x: number; y: number; width: number; height: number } | null>(),
+    /** Half-open UTF-16 offsets into the canonical parsed text (text formats). */
+    offsetStart: integer("offset_start"),
+    offsetEnd: integer("offset_end"),
+    groundingStatus: text("grounding_status").notNull().default("grounded"),
+    /** Extra regions when a citation spans multiple runs/pages. */
+    regions: jsonb("regions").$type<Array<{ page: number | null; box: { x: number; y: number; width: number; height: number } | null }>>(),
     sourceText: text("source_text").notNull(),
     candidateRank: integer("candidate_rank"),
   },
@@ -283,6 +415,26 @@ export const invoiceLineItems = pgTable(
   }),
 );
 
+export const documentRecords = pgTable(
+  "document_records",
+  {
+    documentId: uuid("document_id")
+      .primaryKey()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    extractionId: uuid("extraction_id").notNull(),
+    extractionVersion: integer("extraction_version").notNull(),
+    schemaKey: text("schema_key").notNull(),
+    schemaVersionId: uuid("schema_version_id"),
+    data: jsonb("data").notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    schemaIdx: index("document_records_schema_idx").on(t.schemaKey),
+    approvedIdx: index("document_records_approved_idx").on(t.approvedAt),
+  }),
+);
+
 export const fieldCorrections = pgTable("field_corrections", {
   id: uuid("id").primaryKey().defaultRandom(),
   extractionId: uuid("extraction_id")
@@ -301,3 +453,8 @@ export type ExtractionRow = typeof extractions.$inferSelect;
 export type ExtractionFieldRow = typeof extractionFields.$inferSelect;
 export type SourceReferenceRow = typeof sourceReferences.$inferSelect;
 export type InvoiceRecordRow = typeof invoiceRecords.$inferSelect;
+export type DocumentRecordRow = typeof documentRecords.$inferSelect;
+export type DocumentSchemaRow = typeof documentSchemas.$inferSelect;
+export type DocumentSchemaVersionRow = typeof documentSchemaVersions.$inferSelect;
+export type DocumentParseRow = typeof documentParses.$inferSelect;
+export type DocumentEventRow = typeof documentEvents.$inferSelect;

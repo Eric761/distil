@@ -22,10 +22,19 @@ describe("interpretQuery", () => {
   });
 
   it("surfaces unparsed terms instead of silently applying them", () => {
-    const result = interpretQuery("widgets from Acme", ["Acme Office Supply Co."]);
+    const result = interpretQuery("widgets from Acme Office Supply Co. above 100", ["Acme Office Supply Co."]);
 
     expect(result.warnings.some((w) => w.startsWith("Ignored:"))).toBe(true);
     expect(result.unparsedTerms).toContain("widgets");
+  });
+
+  it("falls back to a visible search filter for generic document phrases", () => {
+    const result = interpretQuery("documents mentioning Orbital Cloud Migration", []);
+
+    expect(result.filters.search).toBe("orbital cloud migration");
+    expect(result.chips).toEqual([{ key: "search", label: "Search", display: "orbital cloud migration" }]);
+    expect(result.unparsedTerms).toEqual([]);
+    expect(result.needsClarification).toBe(false);
   });
 
   it("returns needsClarification when no filters can be derived", () => {

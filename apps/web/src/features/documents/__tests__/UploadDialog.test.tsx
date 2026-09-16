@@ -14,7 +14,7 @@ vi.mock("react-router-dom", async () => {
 });
 
 describe("UploadDialog", () => {
-  it("rejects non-PDF files before upload starts", async () => {
+  it("rejects unsupported files before upload starts", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <UploadDialog>
@@ -24,11 +24,13 @@ describe("UploadDialog", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Upload" }));
-    const input = screen.getByLabelText(/choose a pdf file/i) as HTMLInputElement;
-    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+    const input = screen.getByLabelText(/choose files/i) as HTMLInputElement;
+    const file = new File(["MZ"], "app.exe", { type: "application/x-msdownload" });
     fireEvent.change(input, { target: { files: [file] } });
 
-    expect(await screen.findByText("Only PDF files are supported.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Unsupported file type\./i),
+    ).toBeInTheDocument();
   });
 
   it("surfaces duplicate uploads with a link to the existing record", async () => {
@@ -56,7 +58,7 @@ describe("UploadDialog", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Upload" }));
-    const input = screen.getByLabelText(/choose a pdf file/i);
+    const input = screen.getByLabelText(/choose files/i);
     const file = new File(["%PDF-1.4"], "invoice.pdf", { type: "application/pdf" });
     await user.upload(input, file);
 

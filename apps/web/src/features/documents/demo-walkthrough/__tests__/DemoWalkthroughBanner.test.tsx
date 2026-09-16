@@ -11,7 +11,7 @@ describe("DemoWalkthroughBanner", () => {
       { route: "/documents", path: "*" },
     );
 
-    expect(screen.getByRole("heading", { name: /see review → approve → query in action/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review → approve → explore in action/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start walkthrough/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /not now/i })).toBeInTheDocument();
   });

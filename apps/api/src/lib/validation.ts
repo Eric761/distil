@@ -6,7 +6,8 @@ import type {
   ValidationIssue,
   ValidationState,
 } from "@invoice/contracts";
-import { equalsCents, isDecimalString, normalizeDecimal, mulScaled, addScaled, toScaled } from "./money.js";
+import { isDecimalString } from "./money.js";
+import { RULE_REGISTRY } from "./rules.js";
 
 export interface WorkingField {
   id: string;
@@ -38,11 +39,14 @@ export function effectiveValue(field: {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?/u;
 const CURRENCY = /^[A-Z]{3}$/u;
-const LINE_PATH = /^lineItems\[(\d+)\]\.(description|quantity|unitPrice|lineTotal)$/u;
+const INTEGER = /^-?\d+$/u;
 
 function asString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
 }
 
 /** Type/presence validation for a single field's effective value. */
@@ -67,6 +71,11 @@ function validateSingle(field: WorkingField, value: unknown | null): FieldValida
         return { state: "invalid", issues: [{ severity: "error", message: "Enter a valid date (YYYY-MM-DD)." }] };
       }
       return { state: "valid", issues: [] };
+    case "datetime":
+      if (!str || !ISO_DATETIME.test(str)) {
+        return { state: "invalid", issues: [{ severity: "error", message: "Enter a valid date/time." }] };
+      }
+      return { state: "valid", issues: [] };
     case "currency":
       if (!str || !CURRENCY.test(str)) {
         return { state: "invalid", issues: [{ severity: "error", message: "Enter a 3-letter currency code (e.g. USD)." }] };
@@ -77,17 +86,32 @@ function validateSingle(field: WorkingField, value: unknown | null): FieldValida
         return { state: "invalid", issues: [{ severity: "error", message: "Enter a valid number." }] };
       }
       return { state: "valid", issues: [] };
+    case "integer":
+      if (!str || !INTEGER.test(str)) {
+        return { state: "invalid", issues: [{ severity: "error", message: "Enter a whole number." }] };
+      }
+      return { state: "valid", issues: [] };
+    case "boolean":
+      if (typeof value !== "boolean" && !/^(true|false|yes|no)$/iu.test(str ?? "")) {
+        return { state: "invalid", issues: [{ severity: "error", message: "Enter true or false." }] };
+      }
+      return { state: "valid", issues: [] };
     default:
       return { state: "valid", issues: [] };
   }
 }
 
 /**
- * Validates every field, including cross-field reconciliation:
- * line total math, subtotal integrity, and subtotal + tax = total.
+ * Validates every field: generic type/presence checks always run, then any
+ * schema-declared cross-field rules (e.g. invoice reconciliation) are applied.
+ * `ruleKeys` come from the schema the extraction was produced against, so
+ * generic documents (which declare no rules) never trigger invoice math.
  * Returns a map keyed by field id.
  */
-export function validateFields(fields: WorkingField[]): Map<string, FieldValidation> {
+export function validateFields(
+  fields: WorkingField[],
+  ruleKeys: string[] = [],
+): Map<string, FieldValidation> {
   const byPath = new Map<string, WorkingField>();
   const values = new Map<string, unknown | null>();
   for (const f of fields) {
@@ -100,84 +124,9 @@ export function validateFields(fields: WorkingField[]): Map<string, FieldValidat
     result.set(f.id, validateSingle(f, values.get(f.path) ?? null));
   }
 
-  // Line-item math: quantity * unitPrice should equal lineTotal.
-  const lineIndexes = new Set<number>();
-  for (const f of fields) {
-    const m = LINE_PATH.exec(f.path);
-    if (m) lineIndexes.add(Number(m[1]));
-  }
-  let anyLineIssue = false;
-  for (const idx of lineIndexes) {
-    const qtyF = byPath.get(`lineItems[${idx}].quantity`);
-    const unitF = byPath.get(`lineItems[${idx}].unitPrice`);
-    const totalF = byPath.get(`lineItems[${idx}].lineTotal`);
-    if (!qtyF || !unitF || !totalF) continue;
-    const qty = asString(values.get(qtyF.path) ?? null);
-    const unit = asString(values.get(unitF.path) ?? null);
-    const total = asString(values.get(totalF.path) ?? null);
-    if (!qty || !unit || !total) continue;
-    if (![qty, unit, total].every(isDecimalString)) continue;
-    const expected = mulScaled(toScaled(qty), toScaled(unit));
-    if (!equalsCents(expected, toScaled(total))) {
-      anyLineIssue = true;
-      const existing = result.get(totalF.id);
-      // Only downgrade to warning if not already a hard type error.
-      if (!existing || existing.state !== "invalid") {
-        result.set(totalF.id, {
-          state: "warning",
-          issues: [
-            {
-              severity: "warning",
-              message: `${qty} x ${normalizeDecimal(unit)} = ${normalizeDecimal(
-                (Number(qty) * Number(unit)).toString(),
-              )}, but ${normalizeDecimal(total)} was recorded.`,
-            },
-          ],
-        });
-      }
-    }
-  }
-
-  // Subtotal integrity note when a line looks mispriced.
-  const subtotalF = byPath.get("subtotal");
-  if (subtotalF && anyLineIssue) {
-    const existing = result.get(subtotalF.id);
-    if (!existing || existing.state === "valid") {
-      result.set(subtotalF.id, {
-        state: "warning",
-        issues: [
-          { severity: "warning", message: "One or more line totals look mispriced; verify the subtotal." },
-        ],
-      });
-    }
-  }
-
-  // subtotal + tax = total.
-  const taxF = byPath.get("tax");
-  const totalF = byPath.get("total");
-  if (subtotalF && taxF && totalF) {
-    const sub = asString(values.get("subtotal") ?? null);
-    const tax = asString(values.get("tax") ?? null);
-    const total = asString(values.get("total") ?? null);
-    if (sub && tax && total && [sub, tax, total].every(isDecimalString)) {
-      const expected = addScaled(toScaled(sub), toScaled(tax));
-      if (!equalsCents(expected, toScaled(total))) {
-        const existing = result.get(totalF.id);
-        if (!existing || existing.state !== "invalid") {
-          result.set(totalF.id, {
-            state: "warning",
-            issues: [
-              {
-                severity: "warning",
-                message: `Subtotal + tax (${normalizeDecimal(
-                  (Number(sub) + Number(tax)).toString(),
-                )}) does not equal the total (${normalizeDecimal(total)}).`,
-              },
-            ],
-          });
-        }
-      }
-    }
+  for (const key of ruleKeys) {
+    const rule = RULE_REGISTRY[key];
+    if (rule) rule({ fields, byPath, values, result });
   }
 
   return result;

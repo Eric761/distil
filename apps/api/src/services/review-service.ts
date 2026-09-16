@@ -4,22 +4,24 @@ import {
   type ApproveRequest,
   type ExtractionDetail,
   type ExtractionField,
-  type LineItemRow,
   type SaveExtractionRequest,
+  type SchemaFieldDef,
+  type SchemaTree,
   type SourceReference,
 } from "@invoice/contracts";
 import { getDb, type Database } from "../db/client.js";
 import {
   documents,
+  documentRecords,
   extractionFields,
   extractions,
   fieldCorrections,
-  invoiceLineItems,
   invoiceRecords,
   sourceReferences,
   type ExtractionFieldRow,
 } from "../db/schema.js";
 import { AppError, notFound } from "../lib/errors.js";
+import { rulesForSchema } from "../lib/rules.js";
 import {
   approvalBlockers,
   computeNeedsAttention,
@@ -30,7 +32,14 @@ import {
   type FieldValidation,
   type WorkingField,
 } from "../lib/validation.js";
-import { buildNormalizedDraft, normalizedVendor } from "./processing-service.js";
+import { buildNormalizedDraft, upsertInvoiceProjection } from "./processing-service.js";
+import { deriveData, typedIndexColumns, writeEvent } from "./extraction-commit.js";
+import {
+  buildInvoiceSchemaTree,
+  buildResumeSchemaTree,
+  INVOICE_SCHEMA_KEY,
+  RESUME_SCHEMA_KEY,
+} from "./schema-service.js";
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -60,17 +69,22 @@ function mapField(
   return {
     id: row.id,
     path: row.path,
+    schemaFieldKey: row.schemaFieldKey ?? row.path,
     label: row.label,
-    group: row.fieldGroup as ExtractionField["group"],
+    group: row.fieldGroup,
     type: row.type,
+    nodeKind: (row.nodeKind as ExtractionField["nodeKind"]) ?? "scalar",
     required: row.required,
     material: row.material,
     extractedValue: row.extractedValue ?? null,
     correctedValue: row.correctedValue ?? null,
     effectiveValue: effectiveValue(working),
+    presenceState: (row.presenceState as ExtractionField["presenceState"]) ?? "present",
+    valueOrigin: (row.valueOrigin as ExtractionField["valueOrigin"]) ?? "extracted",
     confidenceScore: row.confidenceScore,
     confidenceState: row.confidenceState,
     confidenceReason: row.confidenceReason,
+    parseConfidence: row.parseConfidence ?? null,
     validationState: validation.state,
     validationIssues: validation.issues,
     reviewState: row.reviewState,
@@ -125,7 +139,11 @@ async function loadExtractionContext(documentId: string): Promise<{
     list.push({
       id: ref.id,
       page: ref.page,
-      box: ref.box,
+      box: ref.box ?? null,
+      offsetStart: ref.offsetStart ?? null,
+      offsetEnd: ref.offsetEnd ?? null,
+      groundingStatus: (ref.groundingStatus as SourceReference["groundingStatus"]) ?? "grounded",
+      regions: (ref.regions as SourceReference["regions"]) ?? [],
       sourceText: ref.sourceText,
       candidateRank: ref.candidateRank,
     });
@@ -135,46 +153,50 @@ async function loadExtractionContext(documentId: string): Promise<{
   return { document: doc, extraction, rows, refsByField };
 }
 
-function assemble(
-  context: Awaited<ReturnType<typeof loadExtractionContext>>,
-): ExtractionDetail {
+/** The schema this extraction was produced against (stored at commit time). */
+function schemaFor(extraction: typeof extractions.$inferSelect, rows: ExtractionFieldRow[]): SchemaTree {
+  const payload = extraction.rawPayload as { schema?: SchemaTree } | null;
+  if (payload && payload.schema && Array.isArray(payload.schema.fields)) {
+    return payload.schema;
+  }
+  if (extraction.schemaKey === INVOICE_SCHEMA_KEY) return buildInvoiceSchemaTree();
+  if (extraction.schemaKey === RESUME_SCHEMA_KEY) return buildResumeSchemaTree();
+  // Fallback: synthesize a flat schema from the committed fields.
+  const seen = new Set<string>();
+  const fields: SchemaFieldDef[] = [];
+  for (const row of rows) {
+    const key = row.schemaFieldKey ?? row.path;
+    if (seen.has(key) || key.includes("[].")) continue;
+    seen.add(key);
+    fields.push({
+      key,
+      label: row.label,
+      type: row.type,
+      nodeKind: (row.nodeKind as SchemaFieldDef["nodeKind"]) ?? "scalar",
+      group: row.fieldGroup,
+      required: row.required,
+      material: row.material,
+    });
+  }
+  return { key: extraction.schemaKey ?? "document", name: "Document", version: "draft", status: "draft", adHoc: true, fields };
+}
+
+function assemble(context: Awaited<ReturnType<typeof loadExtractionContext>>): ExtractionDetail {
   const { document, extraction, rows, refsByField } = context;
   const working = rows.map(toWorking);
-  const validations = validateFields(working);
+  const ruleKeys = rulesForSchema(extraction.schemaKey);
+  const validations = validateFields(working, ruleKeys);
 
   const fieldsDto: ExtractionField[] = [];
-  const lineItemMap = new Map<number, Partial<LineItemRow["fields"]> & { position: number }>();
+  const dataEntries: Array<{ path: string; nodeKind: string; value: unknown }> = [];
 
   for (const row of rows) {
     const validation = validations.get(row.id) ?? { state: "not_checked" as const, issues: [] };
-    const attention = computeNeedsAttention(toWorking(row), validation);
-    const dto = mapField(row, refsByField.get(row.id) ?? [], validation, attention);
-
-    const lineMatch = /^lineItems\[(\d+)\]\.(description|quantity|unitPrice|lineTotal)$/u.exec(row.path);
-    if (lineMatch) {
-      const idx = Number(lineMatch[1]);
-      const key = lineMatch[2] as keyof LineItemRow["fields"];
-      const entry = lineItemMap.get(idx) ?? { position: idx };
-      entry[key] = dto;
-      lineItemMap.set(idx, entry);
-    } else {
-      fieldsDto.push(dto);
-    }
+    const wf = toWorking(row);
+    const attention = computeNeedsAttention(wf, validation);
+    fieldsDto.push(mapField(row, refsByField.get(row.id) ?? [], validation, attention));
+    dataEntries.push({ path: row.path, nodeKind: row.nodeKind ?? "scalar", value: effectiveValue(wf) });
   }
-
-  const lineItems: LineItemRow[] = [...lineItemMap.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .filter(([, v]) => v.description && v.quantity && v.unitPrice && v.lineTotal)
-    .map(([idx, v]) => ({
-      id: `line-${idx}`,
-      position: idx,
-      fields: {
-        description: v.description!,
-        quantity: v.quantity!,
-        unitPrice: v.unitPrice!,
-        lineTotal: v.lineTotal!,
-      },
-    }));
 
   const blockers = approvalBlockers(working, validations);
   const progress = reviewProgress(working, validations);
@@ -183,15 +205,30 @@ function assemble(
     documentId: document.id,
     extractionId: extraction.id,
     version: extraction.version,
+    documentType: document.documentType,
     schemaVersion: extraction.schemaVersion,
-    status: extraction.status as "succeeded" | "partial",
-    presentSections: extraction.presentSections as ExtractionDetail["presentSections"],
+    schemaVersionId: extraction.schemaVersionId,
+    schema: schemaFor(extraction, rows),
+    sourceKind: (extraction.sourceKind as ExtractionDetail["sourceKind"]) ?? "pdf",
+    status: extraction.status as ExtractionDetail["status"],
+    presentSections: extraction.presentSections,
     fields: fieldsDto,
-    lineItems,
+    data: deriveData(dataEntries),
     progress,
     approvalBlockers: blockers,
+    statusNote: extraction.statusNote ?? null,
     pages: extraction.pages,
   };
+}
+
+function dataForWorking(rows: ExtractionFieldRow[], working: WorkingField[]): unknown {
+  const byId = new Map(working.map((wf) => [wf.id, wf]));
+  return deriveData(
+    rows.map((row) => {
+      const wf = byId.get(row.id) ?? toWorking(row);
+      return { path: row.path, nodeKind: row.nodeKind ?? "scalar", value: effectiveValue(wf) };
+    }),
+  );
 }
 
 export async function getExtractionDetail(documentId: string): Promise<ExtractionDetail> {
@@ -199,28 +236,38 @@ export async function getExtractionDetail(documentId: string): Promise<Extractio
   return assemble(context);
 }
 
-/** Recompute validations and persist derived field state + normalized record. */
+/** Recompute derived field state (typed columns, validation, review flags) and
+ * refresh the invoice projection when this is an invoice extraction. */
 async function persistDerived(
   tx: Tx,
-  documentId: string,
-  extractionId: string,
+  document: typeof documents.$inferSelect,
+  extraction: typeof extractions.$inferSelect,
   version: number,
   working: WorkingField[],
   rows: ExtractionFieldRow[],
   approvedAt: Date | null,
 ): Promise<void> {
-  const validations = validateFields(working);
+  const ruleKeys = rulesForSchema(extraction.schemaKey);
+  const validations = validateFields(working, ruleKeys);
   const byId = new Map(rows.map((r) => [r.id, r]));
 
   for (const wf of working) {
     const validation = validations.get(wf.id) ?? { state: "not_checked" as const, issues: [] };
     const attention = computeNeedsAttention(wf, validation);
     const row = byId.get(wf.id)!;
+    const eff = effectiveValue(wf);
+    const typed = typedIndexColumns(wf.type, eff);
     await tx
       .update(extractionFields)
       .set({
         correctedValue: (wf.correctedValue ?? null) as object | null,
         reviewState: wf.reviewState,
+        presenceState: wf.reviewState === "not_applicable" ? "not_applicable" : row.presenceState,
+        valueOrigin: wf.reviewState === "corrected" ? "extracted" : row.valueOrigin,
+        valueText: typed.valueText,
+        valueNumeric: typed.valueNumeric,
+        valueDate: typed.valueDate,
+        valueBoolean: typed.valueBoolean,
         validationState: validation.state,
         validationIssues: validation.issues,
         needsAttention: attention,
@@ -229,46 +276,41 @@ async function persistDerived(
       .where(eq(extractionFields.id, wf.id));
   }
 
-  // Rebuild the normalized record from effective values.
-  const effectiveByPath = new Map<string, unknown | null>();
-  for (const wf of working) effectiveByPath.set(wf.path, effectiveValue(wf));
-  const draft = buildNormalizedDraft(effectiveByPath);
-
-  await tx
-    .update(invoiceRecords)
-    .set({
-      extractionVersion: version,
-      vendorName: draft.vendorName,
-      vendorNameNormalized: normalizedVendor(draft.vendorName),
-      invoiceNumber: draft.invoiceNumber,
-      invoiceDate: draft.invoiceDate,
-      dueDate: draft.dueDate,
-      currency: draft.currency,
-      subtotal: draft.subtotal,
-      tax: draft.tax,
-      total: draft.total,
-      paymentTerms: draft.paymentTerms,
-      approvedAt,
-      updatedAt: new Date(),
-    })
-    .where(eq(invoiceRecords.documentId, documentId));
-
-  await tx.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceDocumentId, documentId));
-  for (const li of draft.lineItems) {
-    await tx.insert(invoiceLineItems).values({
-      invoiceDocumentId: documentId,
-      position: li.position,
-      description: li.description,
-      quantity: li.quantity,
-      unitPrice: li.unitPrice,
-      lineTotal: li.lineTotal,
-    });
+  if (extraction.schemaKey === INVOICE_SCHEMA_KEY) {
+    const effectiveByPath = new Map<string, unknown | null>();
+    for (const wf of working) effectiveByPath.set(wf.path, effectiveValue(wf));
+    const draft = buildNormalizedDraft(effectiveByPath);
+    await upsertInvoiceProjection(tx, document.id, extraction.id, version, draft, approvedAt);
   }
 
-  await tx
-    .update(extractions)
-    .set({ version })
-    .where(eq(extractions.id, extractionId));
+  await tx.update(extractions).set({ version }).where(eq(extractions.id, extraction.id));
+}
+
+/** Optimistic-lock check: the client must be editing the current extraction. */
+function assertFresh(
+  extraction: typeof extractions.$inferSelect,
+  expectedExtractionId: string | undefined,
+  expectedVersion: number,
+  verb: string,
+): void {
+  if (expectedExtractionId && expectedExtractionId !== extraction.id) {
+    throw new AppError({
+      code: ERROR_CODES.STALE_EXTRACTION_VERSION,
+      status: 409,
+      title: "Out of date",
+      detail: `This document was reprocessed since you loaded it. Reload before ${verb}.`,
+      meta: { currentExtractionId: extraction.id, currentVersion: extraction.version },
+    });
+  }
+  if (extraction.version !== expectedVersion) {
+    throw new AppError({
+      code: ERROR_CODES.STALE_EXTRACTION_VERSION,
+      status: 409,
+      title: "Out of date",
+      detail: `This extraction changed since you loaded it. Reload before ${verb}.`,
+      meta: { currentVersion: extraction.version },
+    });
+  }
 }
 
 export async function saveExtraction(
@@ -277,16 +319,7 @@ export async function saveExtraction(
 ): Promise<ExtractionDetail> {
   const db = getDb();
   const context = await loadExtractionContext(documentId);
-
-  if (context.extraction.version !== body.expectedVersion) {
-    throw new AppError({
-      code: ERROR_CODES.STALE_EXTRACTION_VERSION,
-      status: 409,
-      title: "Out of date",
-      detail: "This extraction changed since you loaded it. Reload to see the latest values.",
-      meta: { currentVersion: context.extraction.version },
-    });
-  }
+  assertFresh(context.extraction, body.expectedExtractionId, body.expectedVersion, "saving");
 
   const rows = context.rows;
   const rowById = new Map(rows.map((r) => [r.id, r]));
@@ -337,7 +370,7 @@ export async function saveExtraction(
         break;
       }
       default:
-        throw new AppError({ code: ERROR_CODES.VALIDATION_FAILED, status: 400, title: "Unknown action", detail: `Unsupported action for ${row.label}.` });
+        throw new AppError({ code: ERROR_CODES.VALIDATION_FAILED, status: 400, title: "Unsupported action", detail: `Unsupported action for ${row.label}.` });
     }
     corrections.push({ fieldPath: row.path, action: change.action, from: before, to: effectiveValue(wf) });
   }
@@ -346,7 +379,7 @@ export async function saveExtraction(
   const wasApproved = context.document.reviewStatus === "approved";
 
   await db.transaction(async (tx) => {
-    await persistDerived(tx, documentId, context.extraction.id, newVersion, working, rows, null);
+    await persistDerived(tx, context.document, context.extraction, newVersion, working, rows, null);
 
     for (const c of corrections) {
       await tx.insert(fieldCorrections).values({
@@ -358,8 +391,16 @@ export async function saveExtraction(
         extractionVersion: newVersion,
       });
     }
+    await writeEvent(
+      tx,
+      documentId,
+      wasApproved ? "reopened" : "corrected",
+      `${corrections.length} field ${corrections.length === 1 ? "change" : "changes"} saved.`,
+      context.extraction.id,
+    );
 
-    const validations = validateFields(working);
+    const ruleKeys = rulesForSchema(context.extraction.schemaKey);
+    const validations = validateFields(working, ruleKeys);
     const blockers = approvalBlockers(working, validations);
     const reviewStatus = wasApproved ? "reopened" : docReviewStatus(blockers);
 
@@ -378,19 +419,11 @@ export async function approveDocument(
 ): Promise<ExtractionDetail> {
   const db = getDb();
   const context = await loadExtractionContext(documentId);
-
-  if (context.extraction.version !== body.expectedVersion) {
-    throw new AppError({
-      code: ERROR_CODES.STALE_EXTRACTION_VERSION,
-      status: 409,
-      title: "Out of date",
-      detail: "This extraction changed since you loaded it. Reload before approving.",
-      meta: { currentVersion: context.extraction.version },
-    });
-  }
+  assertFresh(context.extraction, body.expectedExtractionId, body.expectedVersion, "approving");
 
   const working = context.rows.map(toWorking);
-  const validations = validateFields(working);
+  const ruleKeys = rulesForSchema(context.extraction.schemaKey);
+  const validations = validateFields(working, ruleKeys);
   const blockers = approvalBlockers(working, validations);
 
   if (blockers.length > 0) {
@@ -406,21 +439,49 @@ export async function approveDocument(
 
   const now = new Date();
   await db.transaction(async (tx) => {
-    // Batch-accept any remaining auto-accepted fields explicitly.
     await tx
       .update(extractionFields)
       .set({ reviewState: "confirmed" })
       .where(and(eq(extractionFields.extractionId, context.extraction.id), eq(extractionFields.reviewState, "auto_accepted")));
 
-    await tx
-      .update(invoiceRecords)
-      .set({ approvedAt: now, updatedAt: now })
-      .where(eq(invoiceRecords.documentId, documentId));
+    if (context.extraction.schemaKey === INVOICE_SCHEMA_KEY) {
+      await tx
+        .update(invoiceRecords)
+        .set({ approvedAt: now, updatedAt: now })
+        .where(eq(invoiceRecords.documentId, documentId));
+    } else if (context.extraction.schemaKey) {
+      await tx
+        .insert(documentRecords)
+        .values({
+          documentId,
+          extractionId: context.extraction.id,
+          extractionVersion: context.extraction.version,
+          schemaKey: context.extraction.schemaKey,
+          schemaVersionId: context.extraction.schemaVersionId,
+          data: dataForWorking(context.rows, working),
+          approvedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: documentRecords.documentId,
+          set: {
+            extractionId: context.extraction.id,
+            extractionVersion: context.extraction.version,
+            schemaKey: context.extraction.schemaKey,
+            schemaVersionId: context.extraction.schemaVersionId,
+            data: dataForWorking(context.rows, working),
+            approvedAt: now,
+            updatedAt: now,
+          },
+        });
+    }
 
     await tx
       .update(documents)
-      .set({ reviewStatus: "approved", approvedAt: now, updatedAt: now })
+      .set({ reviewStatus: "approved", approvedAt: now, lastApprovedExtractionId: context.extraction.id, updatedAt: now })
       .where(eq(documents.id, documentId));
+
+    await writeEvent(tx, documentId, "approved", "Document approved.", context.extraction.id);
   });
 
   return getExtractionDetail(documentId);

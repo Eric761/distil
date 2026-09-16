@@ -23,7 +23,7 @@ function mockDocumentList() {
       }
       return HttpResponse.json(
         makeDocumentListResponse({
-          pagination: { page: 1, pageSize: 10, total: 2, totalPages: 1 },
+          pagination: { page: 1, pageSize: 10, total: 3, totalPages: 1 },
           items: [
             makeDocumentSummary(),
             makeDocumentSummary({
@@ -32,6 +32,20 @@ function mockDocumentList() {
               vendorName: "Greenline Maintenance Services",
               reviewStatus: "needs_review",
               openIssues: 1,
+            }),
+            makeDocumentSummary({
+              id: "33333333-3333-4333-8333-333333333333",
+              originalFilename: "functional-resume.pdf",
+              documentType: "document",
+              schemaName: "Resume",
+              vendorName: null,
+              invoiceNumber: null,
+              total: null,
+              currency: null,
+              summaryValues: [
+                { key: "candidate", label: "Candidate", value: "John W. Smith" },
+                { key: "experience", label: "Experience", value: "Adult care" },
+              ],
             }),
           ],
         }),
@@ -50,8 +64,13 @@ describe("DocumentsPage", () => {
     renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
 
     expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /see review → approve → query in action/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Summary" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Vendor" })).not.toBeInTheDocument();
+    expect(screen.getByText("Resume")).toBeInTheDocument();
+    expect(screen.getByText("John W. Smith")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review → approve → explore in action/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /see review → approve → query in action/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /evaluator guide/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /acme-office-supply-invoice\.pdf/i })).toBeInTheDocument();
   });
@@ -61,10 +80,10 @@ describe("DocumentsPage", () => {
     renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
 
     expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /see review → approve → query in action/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /start walkthrough/i }));
-    expect(screen.getByRole("heading", { name: /five steps: review → approve → query/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review → approve → explore in action/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /see review → approve → query in action/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /evaluator guide/i })).toBeInTheDocument();
   });
@@ -75,10 +94,27 @@ describe("DocumentsPage", () => {
     renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
 
     expect(await screen.findByText("Acme Office Supply Co.")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /five steps: review → approve → query/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /review → approve → explore in action/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /evaluator guide/i }));
-    expect(screen.getByRole("heading", { name: /five steps: review → approve → query/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review → approve → explore in action/i })).toBeInTheDocument();
+  });
+
+  it("shows a contextual extraction retry for partial documents", async () => {
+    server.use(
+      http.get("*/api/review-queue", () => HttpResponse.json(makeReviewQueueResponse())),
+      http.get("*/api/documents", () =>
+        HttpResponse.json(
+          makeDocumentListResponse({
+            items: [makeDocumentSummary({ processingStatus: "partial", processingPhase: null })],
+          }),
+        ),
+      ),
+    );
+    renderWithProviders(<DocumentsPage />, { route: "/documents", path: "*" });
+
+    const retry = await screen.findByRole("button", { name: /retry partial extraction/i });
+    expect(retry).toHaveTextContent("Retry");
   });
 
   it("shows a recoverable error state when the list request fails", async () => {

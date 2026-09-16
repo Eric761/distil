@@ -21,6 +21,7 @@
     "@fastify/multipart": "^9.0.3",
     "@fastify/static": "^8.0.4",
     "@invoice/contracts": "workspace:*",
+    "@invoice/extraction": "workspace:*",
     "@invoice/fixtures": "workspace:*",
     "drizzle-orm": "^0.38.3",
     "fastify": "^5.2.1",

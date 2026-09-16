@@ -10,6 +10,10 @@ const DocumentViewer = React.lazy(() =>
   import("@/features/provenance/DocumentViewer").then((m) => ({ default: m.DocumentViewer })),
 );
 
+const TextViewer = React.lazy(() =>
+  import("@/features/provenance/TextViewer").then((m) => ({ default: m.TextViewer })),
+);
+
 /** Minimum widths (px) each pane keeps so neither can be collapsed to nothing. */
 const MIN_DOC_WIDTH = 360;
 const MIN_REVIEW_WIDTH = 380;
@@ -23,14 +27,18 @@ function InitialFocus({ detail, focusFieldPath }: { detail: ExtractionDetail; fo
   const { focus } = useProvenance();
   React.useEffect(() => {
     if (!focusFieldPath) return;
-    const all = [
-      ...detail.fields,
-      ...detail.lineItems.flatMap((li) => [li.fields.description, li.fields.quantity, li.fields.unitPrice, li.fields.lineTotal]),
-    ];
-    const field = all.find((f) => f.path === focusFieldPath);
+    const field = detail.fields.find((f) => f.path === focusFieldPath);
     const ref = field?.sourceReferences[0];
     if (field && ref) {
-      focus({ fieldId: field.id, page: ref.page, box: ref.box, text: ref.sourceText, label: field.label });
+      focus({
+        fieldId: field.id,
+        page: ref.page,
+        box: ref.box,
+        offsetStart: ref.offsetStart,
+        offsetEnd: ref.offsetEnd,
+        text: ref.sourceText,
+        label: field.label,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusFieldPath, detail.extractionId]);
@@ -154,7 +162,7 @@ export function SplitWorkspace({
 
       <div
         ref={containerRef}
-        className="flex min-h-[70vh] flex-col overflow-hidden rounded-lg border border-border bg-card lg:h-[calc(100vh-11rem)] lg:flex-row"
+        className="flex min-h-[70vh] flex-col overflow-hidden rounded-lg border border-border bg-card lg:h-[calc(100vh-8.5rem)] lg:flex-row"
       >
         <div
           className={cn(
@@ -168,7 +176,11 @@ export function SplitWorkspace({
               <DocumentPreviewLoading />
             }
           >
-            <DocumentViewer documentId={documentId} pageCount={pageCount} />
+            {detail.sourceKind === "text" ? (
+              <TextViewer documentId={documentId} />
+            ) : (
+              <DocumentViewer documentId={documentId} pageCount={pageCount} />
+            )}
           </React.Suspense>
         </div>
 

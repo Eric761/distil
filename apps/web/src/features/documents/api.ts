@@ -8,6 +8,7 @@ import {
   type DocumentDetail,
   type DocumentListQuery,
   type DocumentListResponse,
+  type ProcessRequest,
   type ProcessResponse,
   type UploadResponse,
 } from "@invoice/contracts";
@@ -97,14 +98,18 @@ export function useIngestSample() {
 export function useProcessDocument(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (retry: boolean) =>
+    mutationFn: (args: boolean | ProcessRequest) =>
       apiRequest<ProcessResponse>(`/documents/${id}/process`, {
         method: "POST",
-        body: { retry },
+        body: typeof args === "boolean" ? { retry: args } : args,
         schema: processResponse,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const isReextract = typeof variables !== "boolean" && variables.mode === "reextract";
       void qc.invalidateQueries({ queryKey: queryKeys.documents.detail(id) });
+      if (!isReextract) {
+        void qc.invalidateQueries({ queryKey: queryKeys.documents.extraction(id) });
+      }
       void qc.invalidateQueries({ queryKey: queryKeys.documents.all });
     },
   });

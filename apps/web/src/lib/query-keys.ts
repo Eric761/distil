@@ -10,11 +10,17 @@ export const queryKeys = {
     list: (params: Partial<DocumentListQuery>) => ["documents", "list", params] as const,
     detail: (id: string) => ["documents", "detail", id] as const,
     extraction: (id: string) => ["documents", "extraction", id] as const,
+    history: (id: string) => ["documents", "history", id] as const,
+    parse: (id: string) => ["documents", "parse", id] as const,
     samples: ["documents", "samples"] as const,
   },
   records: {
-    search: (filters: QueryFilters, page: number, sort: string, direction: string, text?: string) =>
-      ["records", "search", { filters, page, sort, direction, text: text ?? null }] as const,
+    search: (filters: QueryFilters, page: number, sort: string, direction: string, text?: string, trustScope?: string) =>
+      ["records", "search", { filters, page, sort, direction, text: text ?? null, trustScope: trustScope ?? "approved" }] as const,
   },
   reviewQueue: ["review-queue"] as const,
+  schemas: {
+    all: ["schemas"] as const,
+    version: (versionId: string) => ["schemas", "version", versionId] as const,
+  },
 };

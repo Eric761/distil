@@ -1,33 +1,44 @@
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Compass, Search, SlidersHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const TABLE_COLUMNS = ["Vendor", "Invoice #", "Date", "Total", "Review", "Issues", "Source"];
+const TABLE_COLUMNS = ["", "Document", "Summary", "Total", "Review", "Issues", "Actions"];
 const EXAMPLE_LABELS = [
   "invoices from Acme above 500",
-  "EUR invoices in 2024",
+  "documents mentioning healthcare",
   "approved invoices over 1000",
-  "Atlas Industrial",
+  "support tickets with High priority",
 ];
 
 export function QueryResultsLoading() {
   return (
     <div className="space-y-3" aria-busy="true">
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Skeleton className="h-5 w-24 bg-muted/80" />
-          <Skeleton className="h-5 w-36 bg-muted/80" />
-          <Skeleton className="h-5 w-32 bg-muted/80" />
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Skeleton className="h-7 w-24 rounded-md bg-muted/80" />
+          <Skeleton className="h-7 w-28 rounded-md bg-muted/80" />
+          <Skeleton className="h-7 w-28 rounded-md bg-muted/80" />
         </div>
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-8 w-24 bg-muted/80" />
-          <Skeleton className="h-8 w-24 bg-muted/80" />
+        <div className="flex items-center gap-1.5">
+          <Skeleton className="h-8 w-40 rounded-md bg-muted/80" />
+          <Skeleton className="size-8 rounded-md bg-muted/80" />
+          <Skeleton className="h-8 w-14 rounded-md bg-muted/80" />
+          <Skeleton className="h-8 w-14 rounded-md bg-muted/80" />
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        <table className="w-full border-collapse text-sm">
+      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
           <caption className="sr-only">Loading query results</caption>
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[21%]" />
+            <col className="w-[25%]" />
+            <col className="w-[10%]" />
+            <col className="w-[13%]" />
+            <col className="w-[10%]" />
+            <col className="w-[17%]" />
+          </colgroup>
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               {TABLE_COLUMNS.map((column) => (
@@ -68,9 +79,9 @@ export function QueryRouteLoading() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-4 sm:p-6" aria-busy="true">
       <PageHeader
-        icon={<Search className="size-6" aria-hidden="true" />}
-        title="Query records"
-        description="Ask in plain language — it becomes visible, editable filters."
+        icon={<Compass className="size-6" aria-hidden="true" />}
+        title="Explore documents"
+        description="One row per document. Ask in plain language — it becomes visible, editable filters."
       />
 
       <div className="space-y-2">

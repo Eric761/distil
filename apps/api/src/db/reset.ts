@@ -5,6 +5,7 @@ async function main(): Promise<void> {
   const db = getDb();
   await db.execute(sql`TRUNCATE TABLE documents CASCADE`);
   await db.execute(sql`TRUNCATE TABLE field_corrections CASCADE`);
+  await db.execute(sql`TRUNCATE TABLE document_schemas CASCADE`);
   // eslint-disable-next-line no-console
   console.log("database truncated");
   await closeDb();
