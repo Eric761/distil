@@ -117,6 +117,18 @@ Screenshots follow the same **review → approve → explore** path as the in-ap
 
 ![Explore page with natural-language filters, approved results, and source links](docs/screenshots/06-query-approved-records.png)
 
+**7. Schemas — versioned field definitions**
+
+![Schemas page showing the published Invoice schema with field types, labels, and flags](docs/screenshots/07-schemas-invoice-fields.png)
+
+**8. Documents — upload dialog**
+
+![Upload document modal for PDF, text, markdown, CSV, and HTML files](docs/screenshots/08-documents-upload-dialog.png)
+
+**9. Review workspace — incident retrospective**
+
+![Split review workspace with markdown source, structured incident fields, and schema validation](docs/screenshots/09-review-incident-retrospective.png)
+
 ---
 
 ## What this is
