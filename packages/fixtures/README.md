@@ -2,7 +2,7 @@
 
 This package deterministically **renders realistic invoice PDFs** and emits the
 matching extraction profiles (fields, confidence, validation expectations, source
-bounding boxes/text, processing phases/outcomes, and the expected final query
+bounding boxes/text, processing phases/outcomes, and the expected trusted Explore
 record) used to seed the demo and drive the fixture-based extraction engine.
 
 ## All data here is synthetic
@@ -26,6 +26,9 @@ the product's trust loop with realistic-looking but invented documents.
 - `buildFixtures()` renders every PDF and resolves each field's provenance boxes
   into concrete source references consumed by the API seed and processor.
 
-Because extraction is a deterministic simulation over these fixtures, only these
-built-in documents extract successfully; arbitrary uploads fail honestly. This is
-intentional and clearly surfaced in the UI.
+These fixtures are the **deterministic** path: known demo invoices extract from
+pre-authored fields, confidence, and provenance without calling any model. Other
+supported uploads (text-layer PDF, TXT, Markdown, CSV, HTML) are handled by the
+generic pipeline in `packages/extraction` — structural extraction with an optional,
+gated LLM assist — while image-only PDFs and unsupported formats still fail honestly.
+See the repo `README.md` and `decisions.md` for the full extraction pipeline.

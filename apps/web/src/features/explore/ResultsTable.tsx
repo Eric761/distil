@@ -87,7 +87,7 @@ export function ResultsTable({
         </div>
       ) : null}
       <table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
-        <caption className="sr-only">Query results — one row per document</caption>
+        <caption className="sr-only">Explore results — one row per document</caption>
         <colgroup>
           <col className="w-12" />
           <col className="w-[22%]" />

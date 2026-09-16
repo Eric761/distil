@@ -8,7 +8,7 @@ provenance, and explainable exploration.
 | ---------------- | -------------------------------------------------------------------- |
 | **Live demo**    | [https://distil-mq5q.onrender.com](https://distil-mq5q.onrender.com) |
 | **Stack**        | React · Fastify · PostgreSQL · TypeScript                            |
-| **Demo data**    | 29 seeded invoices plus general document-intelligence samples         |
+| **Demo data**    | 23 seeded demo documents — 14 text/table/markup samples plus 9 invoice fixtures |
 | **Local app**    | [http://localhost:5173](http://localhost:5173) (API on `:4000`)      |
 | **Design notes** | [`decisions.md`](decisions.md)                                       |
 
@@ -121,10 +121,10 @@ Screenshots follow the same **review → approve → explore** path as the in-ap
 
 ## What this is
 
-A document-intelligence platform for turning heterogeneous business documents into
-trusted records. It is still grounded in the original invoice workflow, including
-the 9 curated invoice fixtures, `invoice_records` projection, and reconciliation rule, but
-the platform now supports multiple document types and schema versions.
+A document-intelligence platform for turning heterogeneous text-based business
+documents into trusted records. Markdown, TXT, CSV, HTML, and text-layer PDFs go
+through the same schema-driven trust loop; invoices are a specialized fixture family
+with reconciliation and an `invoice_records` projection.
 
 The hard problem is not just extraction. It is **converting uncertain extraction
 into trusted data**: choosing the right schema, surfacing uncertainty, proving
@@ -178,8 +178,10 @@ input is capped by `LLM_MAX_PAGES`, `LLM_MAX_INPUT_CHARS`,
 **Explore & export**
 
 - Natural language → visible, editable filter chips (unsupported terms are surfaced, never silently applied)
-- Generic phrases fall back to a visible Search chip, while invoice terms still map to typed AP filters
-- One row per document with a details drawer for Data, JSON, and History
+- Generic phrases fall back to a visible Search chip, while recognized financial terms still map to typed filters
+- Filter chips are color-toned by constraint type (amount/currency, status, search)
+- One row per document (Document · Summary · Review · Issues · Updated) with a details drawer for Data, JSON, and History
+- Summary chips report matching count, per-currency totals, and per-schema buckets — currencies are never co-mingled
 - Result-to-source traceability from values back to source evidence
 - Hardened CSV and JSON export of the full matching set
 
@@ -188,7 +190,7 @@ input is capped by `LLM_MAX_PAGES`, `LLM_MAX_INPUT_CHARS`,
 - Schema inference creates a draft proposal that can be edited, published, and reused
 - New generic uploads conservatively match published schemas by field overlap before falling back to ad-hoc inference
 - Published schema versions are immutable
-- Non-invoice schemas use generic allowlisted checks such as date ordering and repeated-record completeness
+- Generic schemas use allowlisted checks such as date ordering and repeated-record completeness
 - Review queue ranks issues across all documents by materiality and uncertainty
 - **Review next issue** jumps straight to the highest-priority field
 
@@ -227,10 +229,10 @@ Nav: **Documents** · **Review queue** · **Explore** · **Schemas**
 
 ### Documents
 
-- After `pnpm db:seed`, the library lists **23 mixed demo documents**: 9 invoices
-  and 14 Markdown, TXT, CSV, and HTML files in varied states.
-- The **sample gallery** lets you ingest additional built-in PDFs; each card
-  previews the trust challenge it demonstrates.
+- After `pnpm db:seed`, the library lists **23 mixed demo documents**: 14 Markdown,
+  TXT, CSV, and HTML files plus 9 invoice fixtures in varied states.
+- The **sample gallery** lets you load built-in generic and invoice samples; each
+  card previews the trust challenge it demonstrates.
 - **Upload** accepts supported documents ≤ 5 MB: text-layer PDF, TXT, Markdown,
   CSV, and HTML.
 - Image-only PDFs persist but fail with an OCR-required error.
@@ -256,6 +258,8 @@ Nav: **Documents** · **Review queue** · **Explore** · **Schemas**
 ### Explore
 
 - Type natural language or use an example → **Search** → refine **editable chips**.
+- Results show one row per document (Document · Summary · Review · Issues · **Updated**);
+  amounts are bucketed per currency in the summary chips, never in a blended column.
 - Open a row’s details drawer to inspect **Data**, raw **JSON**, and extraction
   **History**.
 - **Export CSV** / **Export JSON** downloads the full matching set.
@@ -283,7 +287,8 @@ no extraction are retried from their review page.
 
 ## Demo fixtures
 
-Highlighted samples from the seeded library:
+Highlighted invoice samples from the seeded library; the full seed also includes
+Markdown briefs, TXT notes, CSV tables, and HTML summaries:
 
 | Sample                | Scenario                                               | Outcome                                    |
 | --------------------- | ------------------------------------------------------ | ------------------------------------------ |
@@ -305,13 +310,16 @@ Natural language maps to a **fixed, allowlisted** filter set. Approved records a
 searched by default.
 
 ```
+Orbital Cloud Migration
 invoices from Acme above 500 in USD
-EUR invoices in 2024
 approved invoices over 1000
-Atlas Industrial
-invoices between 500 and 2000
+Spring field kit
+Jordan Lee
 ```
 
+Recognized financial terms map to typed filters (amount, currency, dates, status);
+generic phrases become a visible **Search** chip that matches across document text
+and fields.
 Unparsed terms are listed with a warning — never silently applied. No arbitrary SQL.
 
 ---

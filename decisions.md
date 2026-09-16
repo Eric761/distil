@@ -22,11 +22,18 @@ and what was deliberately cut.
   - [Slice](#slice)
   - [Why this interpretation](#why-this-interpretation)
 - [Product & scope](#product--scope)
+- [Ingestion & extraction](#ingestion--extraction)
+- [Schemas](#schemas)
 - [The trust loop](#the-trust-loop)
 - [Data & storage](#data--storage)
-- [Query](#query)
+- [Explore](#explore)
 - [Frontend](#frontend)
 - [Backend & platform](#backend--platform)
+
+> **Reading order:** the [Brief](#brief) states the current problem. The sections
+> that follow are the accumulated product and engineering decisions behind that
+> problem statement, including scope changes and refinements folded into the
+> current product shape.
 
 ---
 
@@ -34,20 +41,26 @@ and what was deliberately cut.
 
 ### Problem
 
-Accounts-payable analysts receive visually inconsistent vendor invoices and must
-turn them into records they can trust for payment and downstream reporting.
+Operators receive visually inconsistent text-based business documents — invoices,
+briefs, plans, tickets, tables, and markup — and must turn them into records
+they can trust for reporting, review, payment workflows, and downstream work.
 
 The obvious framing — *"turn a document into JSON"* — optimizes for machine output
 and ignores the real cost:
 
+- choosing the right schema for an unfamiliar document shape
 - deciding whether an extracted value is correct
 - resolving missing, ambiguous, or conflicting values
 - correcting without losing the original evidence
 - knowing when a record is safe to use
 
-**The product answers:** *How can an analyst rapidly convert uncertain extraction
-into a trusted record, and later answer operational questions while retaining
-evidence for every material value?*
+**The product answers:** *How can an operator rapidly convert uncertain extraction
+from any supported document into a trusted record, and later answer operational
+questions while retaining evidence for every material value?*
+
+> Distil is a schema-driven document-intelligence platform for supported text-based
+> documents. Invoices are a specialized fixture family with reconciliation and an
+> `invoice_records` projection, not the limit of the product.
 
 ### Hard part
 
@@ -56,6 +69,7 @@ The hard part is **not** extraction. It is converting uncertain extraction into
 
 | Challenge | What it requires |
 | --------- | ---------------- |
+| Schema | Choosing, reusing, or inferring the right schema for a document shape |
 | Uncertainty | Surfacing what is not yet trustworthy |
 | Evidence | Field-level provenance for every material value |
 | Corrections | Preserving originals alongside human edits |
@@ -64,69 +78,184 @@ The hard part is **not** extraction. It is converting uncertain extraction into
 
 ### Slice
 
-One document type (invoices), end to end:
+Text-based document types, end to end — PDFs with text layers plus TXT, Markdown,
+CSV, and HTML:
 
 ```text
-Invoice PDF
+PDF / TXT / Markdown / CSV / HTML
   → persisted upload
-  → recoverable async extraction
+  → canonical parse
+  → classify + infer or reuse a versioned schema
+  → hybrid extraction (fixture or structural, with gated LLM assist)
+  → schema-driven validation
   → confidence-aware review + provenance
   → correction (originals preserved)
   → guarded approval
-  → normalized trusted record
-  → explainable query
+  → trusted record snapshot
+  → explainable Explore
   → result-to-source traceability
 ```
 
-**Seeded demo library:** 29 synthetic invoices covering every processing state
+**Seeded demo library:** 23 synthetic documents — 14 Markdown, TXT, CSV, and HTML
+samples plus 9 curated invoice fixtures — covering every processing state
 (uploaded → queued → processing → succeeded / partial / failed) and review state
-(needs-review, ready, approved, reopened) — so the review queue, query corpus, and
+(needs_review, ready, approved, reopened), so the review queue, Explore corpus, and
 status filters are populated, not empty.
 
-**Six core trust archetypes** drive the review and query demos:
+**Six core trust archetypes** appear across the review and Explore demos; the
+invoice fixtures provide concrete financial examples:
 
 | Archetype | Example fixture |
 | --------- | --------------- |
 | Clean, high confidence | Acme Office Supply |
 | Terminology variation | Northstar Logistics |
-| Ambiguous / missing required field | Greenline Maintenance |
+| Ambiguous identifier | Greenline Maintenance |
 | Conflicting total | Atlas Industrial |
 | Line-item mismatch | Meridian Components |
 | Recoverable partial extraction | Redbrick Consulting |
 
+The 14 text/table/markup samples carry the product beyond those invoice examples:
+schema inference from headings and labeled facts, repeated records in CSVs, and
+untrusted HTML parsed as canonical text, so mixed-schema review and Explore are
+exercised directly.
+
 ### Why this interpretation
 
 A generic *file uploader + JSON* or an *AI chat over documents* demo would show
-technology, not the analyst's actual job.
+technology, not the operator's actual job.
 
-Depth is spent where trust is won or lost — the review workspace, state/recovery
-quality, and the explainable query loop — while extraction stays deterministic and
-the backend deliberately small.
+Depth is spent where trust is won or lost — schema selection, the review workspace,
+state/recovery quality, and the explainable Explore loop — while extraction stays
+deterministic-first (with an optional, gated LLM assist) and the backend
+deliberately small.
 
 ---
 
 ## Product & scope
 
-### Invoice-first, not a generic document platform
+### Text-based document intelligence with invoice specialization
 
-> **Chose:** Model one real domain (vendor invoices) end to end.
+> **Chose:** Build a schema-driven platform for supported text-based business
+> documents, with invoices handled as a specialized domain rather than the product
+> boundary.
 
-- **Over:** Generic "any document type" schema; multi-doc-type router.
-- **Because:** A concrete domain makes validation, reconciliation, and query meaningful
-  (subtotal + tax = total, currency, line items). Breadth would dilute every screen
-  into a generic form.
-- **Tradeoff:** Not directly reusable for receipts or contracts without new profiles.
-- **Cut:** Document-type detection and multi-schema generalization.
+- **Over:** An invoice-only app; a fully generic "any document" tool that treats every
+  upload as untyped JSON.
+- **Because:** Text-layer documents, Markdown, CSV, and HTML are where the generalized
+  schema lifecycle is visible: parse canonical content, infer or reuse fields, validate
+  declared rules, and preserve provenance. Invoices remain useful because they add
+  concrete financial invariants (subtotal + tax = total, currency, line items) without
+  defining the whole product.
+- **Tradeoff:** The product carries both generic schema concepts and invoice-specific
+  projections/rules.
+- **Cut:** A pure invoice-only scope and an unconstrained document router with no
+  declared schema lifecycle.
 
 ### Trust, not extraction accuracy
 
-> **Chose:** Treat human verification of uncertain values as the core product.
+> **Chose:** Treat human verification of uncertain values as the core product,
+> supported by deterministic-first hybrid extraction.
 
 - **Over:** Chasing higher OCR/LLM extraction accuracy.
-- **Because:** Even perfect extraction needs auditable trust for AP use. Confidence,
-  validation, provenance, and guarded approval are the differentiators.
+- **Because:** Even perfect extraction needs auditable trust for operational use. Confidence,
+  validation, provenance, schema fit, and guarded approval are the differentiators.
 - **Tradeoff:** Less "wow" than a raw AI extractor demo.
-- **Cut:** Real OCR/LLM extraction (see fixture simulation below).
+- **Cut:** OCR for image-only PDFs and any extraction path that hides uncertainty from
+  review.
+
+### Cross-format demo corpus
+
+> **Chose:** Seed 23 documents — 14 Markdown, TXT, CSV, and HTML samples plus 9
+> curated invoice fixtures — across processing and review states.
+
+- **Over:** A large invoice-only library; an empty initial workspace.
+- **Because:** The corpus must demonstrate schema inference, repeated records,
+  structural extraction, mixed-schema Explore results, recovery, and approval without
+  requiring setup. The invoice set retains the six high-value trust archetypes while
+  the larger cross-format set demonstrates the general product.
+- **Tradeoff:** Fewer invoice permutations are included out of the box.
+- **Cut:** Demo breadth that adds seed cost without exercising a distinct workflow.
+
+---
+
+## Ingestion & extraction
+
+### Canonical text-first parsing
+
+> **Chose:** Parse text-layer PDF, TXT, Markdown, CSV, and HTML into one canonical
+> content model before classification and extraction.
+
+- **Over:** A separate extraction pipeline for every file type; rendering uploaded HTML
+  directly in the application.
+- **Because:** A canonical representation lets schema inference, structural extraction,
+  provenance, and search work consistently across formats. HTML is treated as
+  untrusted input and reduced to safe canonical text instead of being rendered
+  same-origin.
+- **Tradeoff:** Format-specific layout and styling are intentionally discarded outside
+  the controlled PDF viewer.
+- **Cut:** Image-only PDF OCR, executable uploaded markup, and unsupported binary formats.
+
+### Deterministic-first hybrid extraction
+
+> **Chose:** Use deterministic pre-authored extraction for known fixtures and
+> structural extraction for other supported documents, with an optional gated LLM
+> assist when structural coverage is insufficient.
+
+- **Over:** Fixture-only simulation; invoking OCR or an LLM for every upload.
+- **Because:** Fixtures remain reproducible and cost-free, while generic documents still
+  become reviewable records. Model use is disabled without `OPENAI_API_KEY`, bounded by
+  document caps, and skipped when deterministic extraction already has sufficient
+  coverage.
+- **Tradeoff:** Low-structure documents may produce partial results, and image-only PDFs
+  fail with an explicit OCR-required error.
+- **Cut:** Unbounded model calls and extraction that presents uncertain output as fact.
+
+---
+
+## Schemas
+
+### Infer drafts, publish immutable versions
+
+> **Chose:** Infer a draft schema for unfamiliar document shapes and optionally publish
+> an immutable version for reuse, with conservative matching to existing published
+> schemas before falling back to a new draft.
+
+- **Over:** One global schema; opaque per-document schemas that cannot be reviewed;
+  mutating a published schema in place.
+- **Because:** Drafts capture inferred shape without locking history; published versions
+  stay fixed so past extractions and approvals remain interpretable. New uploads match
+  published schemas by field overlap only when the fit is strong enough.
+- **Tradeoff:** Schema review adds a lifecycle and versioning model that operators must
+  understand.
+- **Cut:** Silent schema replacement and forced matching to a weakly related schema.
+
+### Declared, allowlisted validation rules
+
+> **Chose:** Attach validation rules to schemas and execute only rules from a declared
+> server-side registry.
+
+- **Over:** Hard-coding every rule into the invoice workflow; accepting arbitrary
+  client-supplied expressions.
+- **Because:** Generic schemas need reusable checks such as date ordering and repeated
+  record completeness, while financial schemas retain reconciliation without applying
+  it to unrelated documents.
+- **Tradeoff:** Adding a new rule requires an explicit registry implementation.
+- **Cut:** Arbitrary rule execution and invoice reconciliation on non-financial schemas.
+
+### First-class schema management in the product
+
+> **Chose:** Expose schema lifecycle in the app as a dedicated **Schemas** area and
+> in-review **schema controls**, not only as backend inference.
+
+- **Over:** Hidden schema APIs; forcing operators to fix field mismatches only by editing
+  extracted values with no view of the schema itself.
+- **Because:** Operators need to inspect and change the schema in the same session as
+  field review. The Schemas page browses families and versions; the review workspace
+  edits draft fields, selects a published version for re-extraction, and publishes drafts
+  when the shape is ready — without bypassing the immutability rules above.
+- **Tradeoff:** Schema editing appears in two places (library and document review) and
+  must stay consistent with server immutability rules for published versions.
+- **Cut:** Schema changes limited to seed data or manual database edits.
 
 ---
 
@@ -139,7 +268,7 @@ the backend deliberately small.
 
 - **Over:** One collapsed "status".
 - **Because:** A high-confidence value can still be invalid; a valid value can still
-  need review. Collapsing them hides exactly the information analysts need.
+  need review. Collapsing them hides exactly the information operators need.
 - **Tradeoff:** More states to render and reason about.
 - **Cut:** A single traffic-light status.
 
@@ -164,30 +293,49 @@ the backend deliberately small.
   the human change, and which-change-against-which-version must all survive.
 - **Tradeoff:** More rows and lifecycle states to carry.
 - **Cut:** Actor identity — corrections and approvals are timestamped and versioned but
-  not attributed to a user (no auth). Honest gap for a single-analyst demo; the audit
+  not attributed to a user (no auth). Honest gap for a single-operator demo; the audit
   log is structured to accept an author column later.
 
 ### Concurrency: optimistic extraction versioning
 
-> **Chose:** Save and approve carry `expectedVersion`; a mismatch returns a stale-version
-> error and the client prompts reload rather than overwriting.
+> **Chose:** Save and approve carry both `expectedExtractionId` and
+> `expectedVersion`; a mismatch returns a stale-version error and the client prompts
+> reload rather than overwriting.
 
 - **Over:** Last-write-wins; row locks held across a review session.
-- **Because:** Reviews are think-time-heavy and multi-tab; a monotonic version stops one
-  analyst from clobbering another's corrections without locks or a realtime channel.
+- **Because:** Reviews are think-time-heavy and multi-tab; the extraction identity
+  prevents edits against a replaced extraction, while its monotonic version prevents
+  one reviewer from clobbering another's corrections without locks or a realtime
+  channel.
 - **Tradeoff:** Conflicting saves are rejected outright (reload and redo), not merged.
 - **Cut:** Field-level merge and collaborative editing.
 
-### Provenance: normalized bounding boxes + source text
+### Provenance: PDF regions + text offsets
 
-> **Chose:** Store 0–1 normalized page coordinates plus source text per field; highlight
-> in a controlled PDF viewer.
+> **Chose:** Store source text with normalized page regions for PDFs and character
+> offsets into canonical content for text-based documents.
 
-- **Over:** Absolute pixel boxes; text-only references.
-- **Because:** Normalized coordinates are stable across zoom/viewport; source text is an
-  accessible, non-visual fallback so the canvas is never the only channel.
-- **Tradeoff:** One coordinate-transform utility to maintain.
-- **Cut:** Pixel-locked overlays.
+- **Over:** Absolute pixel boxes; text-only references with no resolvable source
+  location.
+- **Because:** Normalized coordinates remain stable across PDF zoom and viewport size;
+  offsets let the safe text viewer highlight evidence in TXT, Markdown, CSV, HTML, and
+  canonicalized content. Source text remains an accessible fallback for both.
+- **Tradeoff:** Two source-location strategies must share one provenance contract.
+- **Cut:** Pixel-locked overlays and rendering uploaded HTML as evidence.
+
+### Approval creates a stable trusted snapshot
+
+> **Chose:** Preserve append-only extraction lineage and record the last approved
+> extraction as a stable snapshot.
+
+- **Over:** Treating the mutable current extraction as the approved record; replacing
+  prior extraction history.
+- **Because:** Review corrections may continue after approval. A stable approved
+  snapshot makes it possible to distinguish what was trusted from what is currently
+  being edited and to trace either state back to evidence.
+- **Tradeoff:** Current and approved state can intentionally diverge until the document
+  is approved again.
+- **Cut:** Approval without retained lineage.
 
 ### Cross-document review queue: rank the work
 
@@ -198,7 +346,7 @@ the backend deliberately small.
 
 - **Over:** Flat per-field issue list; ordering by open-issue count alone; client-side
   computation over the documents list.
-- **Because:** Analysts want the *most consequential* decision next. Server-side ranking
+- **Because:** Reviewers want the *most consequential* decision next. Server-side ranking
   reuses the same `needs_attention`, confidence, and validation state that gates approval,
   so the queue can never disagree with the review screen.
 - **Tradeoff:** A document with many low-severity issues can rank below one with a single
@@ -212,7 +360,7 @@ the backend deliberately small.
 ### PostgreSQL as the single datastore
 
 > **Chose:** PostgreSQL for everything — JSONB raw extraction, normalized records, and
-> PDF bytes.
+> uploaded source bytes.
 
 - **Over:** SQLite, a document store, separate blob store.
 - **Because:** JSONB for immutable raw extraction *and* relational normalized records in
@@ -222,26 +370,17 @@ the backend deliberately small.
 
 ### Hybrid JSONB + normalized relational
 
-> **Chose:** Immutable raw extraction payload (JSONB) plus normalized field/record/line-item
-> tables updated transactionally.
+> **Chose:** Keep immutable raw extraction payloads in JSONB, typed and indexed values
+> in `extraction_fields`, and approved record snapshots in relational projections.
 
-- **Over:** JSONB-only; fully normalized (loses raw evidence).
+- **Over:** JSONB-only; fully normalized storage that loses raw evidence; a separate
+  generic value subsystem.
 - **Because:** Keep original evidence forever while making approved data safely queryable
-  via typed columns and indexes.
+  via typed columns and indexes. Generic documents use `document_records`; financial
+  documents can additionally populate `invoice_records`.
 - **Tradeoff:** Two representations can drift.
 - **Cut:** Storing only the normalized form. Drift is contained by immutable raw payload +
   extraction version + transactional derived writes.
-
-### Deterministic fixture simulation (not live OCR)
-
-> **Chose:** A deterministic engine renders realistic PDFs and emits pre-authored fields,
-> confidence, and source boxes per fixture.
-
-- **Over:** Live OCR/LLM extraction.
-- **Because:** Deterministic, testable, and honest about being a demo — while still
-  exercising real async processing, persistence, provenance, and recovery.
-- **Tradeoff:** Only built-in samples extract; unknown uploads fail by design.
-- **Cut:** General extraction (clearly labeled as a demo limitation).
 
 ### Money math: fixed-point decimal, never floating point
 
@@ -253,30 +392,52 @@ the backend deliberately small.
 - **Tradeoff:** A small money utility to maintain.
 - **Cut:** Floating-point money.
 
-### PDF bytes in PostgreSQL
+### Source bytes in PostgreSQL
 
-> **Chose:** Store uploaded PDF bytes in a `bytea` column, isolated in its own table.
+> **Chose:** Store every uploaded source file as `bytea`, isolated in its own table.
 
 - **Over:** Object storage (S3/GCS); local disk.
 - **Because:** One durable store — refresh/redeploy never loses uploads, with no extra
   infra for a small demo. The blob table is isolated so object storage can replace it later.
-- **Tradeoff:** `bytea` does not scale to large volumes.
+- **Tradeoff:** Database-backed blobs do not scale to large document volumes.
 - **Cut:** External object storage (documented as the scaling path).
 
 ---
 
-## Query
+## Explore
+
+> **Current surface:** cross-document analysis lives in **Explore**; `/query`
+> redirects to `/explore` for compatibility. The filter and multi-currency decisions
+> below still define how natural-language search becomes trusted, inspectable queries.
 
 ### Natural language → allowlisted filters
 
-> **Chose:** A deterministic interpreter maps text to a fixed set of typed filters; the
-> filters (not the text) are the source of truth and are shown as editable chips.
+> **Chose:** A deterministic interpreter maps recognized language to allowlisted
+> filters, while explicit schema-scoped field predicates support structured
+> cross-document analysis. The filters, not the original text, are the source of truth
+> and are shown as editable chips.
 
-- **Over:** LLM-to-SQL; free-text search.
+- **Over:** LLM-to-SQL; arbitrary client operators; free-text search as the only query
+  model.
 - **Because:** Convenience without opacity or injection risk. Users see exactly what will
-  run and can edit it; unparsed terms are surfaced, never silently applied.
+  run and can edit it. When no typed filter is recognized, remaining terms become a
+  visible Search filter; when typed filters exist, unmatched terms are reported as
+  ignored and require acknowledgement rather than being silently applied.
 - **Tradeoff:** The parser only understands documented patterns.
 - **Cut:** Arbitrary SQL/JSONPath/expression execution from clients.
+
+### Approved snapshots by default, current values by choice
+
+> **Chose:** Explore reads last-approved snapshots by default and offers an explicit
+> current-values scope for in-progress work.
+
+- **Over:** Always querying mutable current extraction values; hiding unapproved records
+  completely.
+- **Because:** Default results should represent what a reviewer actually trusted, while
+  the current scope is still useful for investigation before approval. Keeping the
+  scopes explicit prevents draft corrections from silently changing approved reports.
+- **Tradeoff:** Two views of the same document can differ until it is approved again.
+- **Cut:** Blending approved and current values into one ambiguous result set.
 
 ### Multi-currency: show it, filter on it, never co-mingle it
 
@@ -284,10 +445,41 @@ the backend deliberately small.
 > amounts never summed or converted across currencies.
 
 - **Over:** A single blended total; converting to a base currency at some rate.
-- **Because:** A blended "total" across USD/EUR/GBP is a false number for AP and would
-  demand an FX rate source and as-of-date policy.
+- **Because:** A blended "total" across USD/EUR/GBP is a false number for financial
+  operations and would demand an FX rate source and as-of-date policy.
 - **Tradeoff:** No single headline figure spanning currencies.
 - **Cut:** Currency conversion and a base-currency rollup.
+
+### Mixed-schema results favor universal signals
+
+> **Chose:** Show one row per document with its summary, review state, open issues, and
+> last update; place matching counts, per-currency totals, and schema composition above
+> the result set.
+
+- **Over:** Keeping an invoice-only amount column in every row; one blended headline
+  total; showing every schema bucket regardless of relevance.
+- **Because:** Summary, review state, issues, and recency apply to every schema. Currency
+  totals remain useful at result-set level when bucketed correctly, while schema
+  summaries explain mixed or non-financial result sets without implying missing data.
+- **Tradeoff:** A document-specific financial amount is inspected in its details rather
+  than occupying a universal table column.
+- **Cut:** Empty invoice-shaped columns for non-financial documents and cross-currency
+  totals.
+
+### Result details and export
+
+> **Chose:** Open any result row into a details drawer with **Data**, raw **JSON**, and
+> extraction **History**, and export the full matching result set as CSV or JSON—not
+> only the current page.
+
+- **Over:** Table-only Explore with no inspectable record; exporting whatever happens to
+  be visible on screen.
+- **Because:** Operators need to verify trusted values, inspect the underlying record,
+  and see how extractions evolved without leaving Explore. Exports must reflect the same
+  filters and trust scope as the query, including rows beyond pagination.
+- **Tradeoff:** Large exports require fetching all matching rows client-side or via the
+  API before download.
+- **Cut:** Opaque downloads with no lineage view and page-limited export.
 
 ---
 
@@ -295,8 +487,9 @@ the backend deliberately small.
 
 ### Feature-oriented React/Vite SPA
 
-> **Chose:** Vite + React with feature folders (documents, review, provenance, query) and
-> shared UI primitives; no global client store.
+> **Chose:** Vite + React with feature folders for documents, review, provenance,
+> review queue, schemas, and Explore, plus shared UI primitives; no global client
+> store.
 
 - **Over:** Next.js; a Redux-style global store.
 - **Because:** Client-heavy SPA behind one API — Next.js SSR adds no value. Server state
@@ -307,7 +500,7 @@ the backend deliberately small.
 ### TanStack Query + local reducers
 
 > **Chose:** TanStack Query for all server state; a small reducer for the review draft;
-> URL params for query/library state.
+> URL params for Explore/library state.
 
 - **Over:** Global store for everything; local component state only.
 - **Because:** Caching, polling, invalidation, and stale-version handling come for free;
@@ -333,7 +526,7 @@ the backend deliberately small.
 ### Thin Fastify API + in-process worker
 
 > **Chose:** Small API surface — ingestion, listing/detail/content, process/retry,
-> extraction read/save/approve, query, health — with a persisted in-process worker.
+> extraction read/save/approve, explore/query, health — with a persisted in-process worker.
 
 - **Over:** Microservice split; external queue.
 - **Because:** Product value is in the frontend trust loop; the backend only needs to be
@@ -353,6 +546,19 @@ the backend deliberately small.
 - **Tradeoff:** A shared package to version and build within the monorepo.
 - **Cut:** Codegen from OpenAPI/DB and per-app duplicated types.
 
+### Extraction as a separate domain package
+
+> **Chose:** Keep canonical parsers, structural extraction, provenance primitives, and
+> the model gate in `packages/extraction`, separate from API orchestration.
+
+- **Over:** Embedding every parser and extraction strategy directly in the Fastify
+  service.
+- **Because:** Parsing and extraction are domain logic with their own deterministic
+  tests and provider boundary; the API should coordinate persistence, processing, and
+  review rather than own format-specific algorithms.
+- **Tradeoff:** Another workspace package and contract boundary to maintain.
+- **Cut:** Provider-specific model calls spread through route and processing code.
+
 ### Single same-origin deployment
 
 > **Chose:** Build Vite assets; Fastify serves them with SPA fallback. One Node service +
@@ -364,56 +570,23 @@ the backend deliberately small.
 - **Tradeoff:** Web and API share a release and a process.
 - **Cut:** Split deployments and cross-origin configuration.
 
-### Testing: workflow- and logic-focused units, no E2E
+### Testing: workflow- and logic-focused units
 
-> **Chose:** Vitest across both apps — RTL + MSW for frontend workflow invariants; backend
-> unit tests for money math, validation/approval gating, and query interpretation; one
-> Fastify route test for upload rejection. No E2E.
+> **Chose:** Vitest across the web, API, and extraction workspaces.
 
-- **Over:** Playwright E2E; exhaustive DB-backed route matrix.
-- **Because:** Concentrate tests on behaviors that determine correctness and trust without
-  brittle browser automation or a full route-integration suite. Shared contracts,
-  migration/seed checks, and deterministic fixtures cover the rest.
-- **Tradeoff:** Broad server route coverage and cross-browser behavior stay unguarded.
-- **Cut:** E2E automation and a full DB-integration route suite.
+- **Over:** Exhaustive DB-backed route matrix; testing only at the UI shell.
+- **Because:** Behaviors that determine correctness and trust get direct coverage;
+  shared contracts, migration/seed checks, and deterministic fixtures keep runs
+  reproducible.
+- **Tradeoff:** Not every HTTP route is exercised through a full database integration
+  path.
+- **Cut:** An exhaustive server route matrix backed by live DB for every endpoint.
 
----
+**Coverage:**
 
-## 2026-09-14 — Document Intelligence Supersedes Invoice-Only Scope
-
-This section supersedes the earlier invoice-first scope decision while preserving it
-as historical context. Distil is now a general document-intelligence platform:
-ingest documents, parse them into canonical content, classify them, infer or reuse a
-versioned schema, extract values with provenance, validate with declared rules,
-review and approve records, then explore trusted data.
-
-> **Chose:** Generalize the trust loop while preserving the 29-invoice demo behavior,
-> `invoice_records` projection, and invoice reconciliation workflow.
-
-- **Hybrid extraction:** Processing runs through FixtureExtractor for known demo
-  documents, an optional gated OpenAI LlmExtractor, and deterministic
-  StructuralExtractor. Fixtures never call OpenAI; unset `OPENAI_API_KEY` disables
-  LLM calls entirely; high-coverage structural results can skip OpenAI.
-- **Supported formats:** Text-layer PDF, TXT, Markdown, CSV, and HTML are parsed into
-  canonical content. Image-only PDFs are out of scope and fail with an OCR-required
-  error instead of pretending extraction succeeded.
-- **Schema lifecycle:** Schemas can be inferred immediately, reviewed and edited as a
-  draft proposal, then optionally published for reuse. Published schema versions are
-  immutable, and new generic uploads conservatively match published schemas by
-  field-overlap before falling back to a fresh ad-hoc draft.
-- **Generic value storage:** Generalized values extend `extraction_fields` with typed
-  storage and indexes rather than adding a separate `document_values` table. Approved
-  non-invoice documents also write a compact `document_records` snapshot so the
-  trusted generic record contract is explicit alongside `invoice_records`.
-- **Explore surface:** Explore replaces Query as the primary cross-document analysis
-  surface; `/query` redirects to `/explore` for compatibility. Generic natural
-  language that does not map to invoice filters becomes a visible Search chip.
-- **Declared validation rules:** Invoice reconciliation remains, but now as a declared
-  schema rule in the rule registry rather than invoice-only hard-coded behavior.
-  Generic schemas use allowlisted structural rules such as date ordering and repeated
-  record completeness; invoice reconciliation never runs for them.
-- **Lineage and approval:** Extraction writes append-only lineage, and approved records
-  retain a last-approved snapshot for traceability.
-- **Optimistic concurrency:** Review saves and approvals carry
-  `expectedExtractionId` plus `expectedVersion` so stale clients cannot overwrite a
-  newer extraction or correction batch.
+- **Web:** React Testing Library and MSW for feature workflow invariants (documents,
+  review, Explore, schemas, review queue).
+- **API:** Unit tests for money math, validation and approval gating, query
+  interpretation; focused Fastify route tests (upload validation, health).
+- **Extraction:** Parser, structural extraction, and LLM-gate unit tests in
+  `packages/extraction`.

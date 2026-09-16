@@ -20,7 +20,7 @@ const HELD_PROCESSING_STATES = {
   "prismworks-uploaded": { processingStatus: "uploaded", reviewStatus: "not_ready", phase: null },
 } satisfies Record<string, HeldProcessingState>;
 
-/** Approved records — available in Query and export. */
+/** Approved records — available in Explore and export. */
 const APPROVED_FIXTURES = [
   "acme-clean",
   "orbital-market",
