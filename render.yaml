@@ -11,7 +11,7 @@ services:
     plan: free
     # corepack enable fails on Render (read-only /usr/local/bin). Use npx instead.
     buildCommand: npx --yes pnpm@10.26.2 install --frozen-lockfile && npx --yes pnpm@10.26.2 build
-    releaseCommand: npx --yes pnpm@10.26.2 run db:migrate && npx --yes pnpm@10.26.2 run db:seed
+    releaseCommand: npx --yes pnpm@10.26.2 run db:reset && npx --yes pnpm@10.26.2 run db:migrate && npx --yes pnpm@10.26.2 run db:seed
     startCommand: npx --yes pnpm@10.26.2 run start
     healthCheckPath: /api/health
     envVars:
